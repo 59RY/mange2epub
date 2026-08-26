@@ -1,7 +1,7 @@
 use std::{
     error::Error,
     fmt,
-    fs::File,
+    fs::{File, OpenOptions},
     io::{self, Write},
     path::{Path, PathBuf},
 };
@@ -86,10 +86,14 @@ pub fn write_epub(
         });
     }
 
-    let output = File::create(output_path).map_err(|source| PackageError::CreateOutput {
-        path: output_path.to_path_buf(),
-        source,
-    })?;
+    let output = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(output_path)
+        .map_err(|source| PackageError::CreateOutput {
+            path: output_path.to_path_buf(),
+            source,
+        })?;
     let mut archive = ZipWriter::new(output);
     let stored = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
     let deflated = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
@@ -258,6 +262,20 @@ mod tests {
         ] {
             assert!(archive.by_name(path).is_ok(), "missing {path}");
         }
+    }
+
+    #[test]
+    fn refuses_to_overwrite_an_existing_output_file() {
+        let directory = TestDirectory::new();
+        let images = images(directory.path());
+        let documents = generate_documents(&images, &metadata()).unwrap();
+        let output = directory.path().join("book.epub");
+        fs::write(&output, "existing output").unwrap();
+
+        let error = write_epub(&output, &images, &documents).unwrap_err();
+
+        assert!(matches!(error, super::PackageError::CreateOutput { .. }));
+        assert_eq!(fs::read_to_string(output).unwrap(), "existing output");
     }
 
     fn metadata() -> MinimalMetadata {

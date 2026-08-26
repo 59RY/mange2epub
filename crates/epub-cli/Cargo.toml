@@ -11,4 +11,5 @@ name = "manga2epub"
 path = "src/main.rs"
 
 [dependencies]
+clap = { version = "4", features = ["derive"] }
 epub-core = { path = "../epub-core" }
