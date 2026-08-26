@@ -82,6 +82,10 @@ fn default_metadata() -> Result<MinimalMetadata, BuildError> {
 
     Ok(MinimalMetadata {
         title: "Untitled".to_owned(),
+        title_file_as: None,
+        creator: None,
+        description: None,
+        publisher: None,
         identifier: format!("urn:uuid:{}", Uuid::new_v4()),
         language: "ja".to_owned(),
         modified,
@@ -129,7 +133,7 @@ mod tests {
         assert_eq!(report.output_path, output);
         assert_eq!(report.page_count, 1);
         let package = package_document(&output);
-        assert!(package.contains("<dc:title>Untitled</dc:title>"));
+        assert!(package.contains("<dc:title id=\"title\">Untitled</dc:title>"));
         assert!(package.contains("<dc:language>ja</dc:language>"));
         assert_modified_timestamp(&package);
         assert_uuid_identifier(&package);

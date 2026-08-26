@@ -281,6 +281,10 @@ mod tests {
     fn metadata() -> MinimalMetadata {
         MinimalMetadata {
             title: "Untitled".to_owned(),
+            title_file_as: None,
+            creator: None,
+            description: None,
+            publisher: None,
             identifier: "urn:uuid:00000000-0000-0000-0000-000000000000".to_owned(),
             language: "ja".to_owned(),
             modified: "2026-08-26T00:00:00Z".to_owned(),

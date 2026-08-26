@@ -5,7 +5,10 @@ use quick_xml::{
     events::{BytesDecl, BytesEnd, BytesStart, BytesText, Event},
 };
 
-use crate::{ImageDimensions, PagePlacement, SourceImage, default_page_placement};
+use crate::{
+    CreatorMetadata, ImageDimensions, PagePlacement, PublicationMetadata, SourceImage,
+    default_page_placement,
+};
 
 const CONTAINER_PATH: &str = "EPUB/package.opf";
 const PAGE_CSS_PATH: &str = "styles/page.css";
@@ -17,9 +20,35 @@ const NAVIGATION_PATH: &str = "nav.xhtml";
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MinimalMetadata {
     pub title: String,
+    pub title_file_as: Option<String>,
+    pub creator: Option<CreatorMetadata>,
+    pub description: Option<String>,
+    pub publisher: Option<String>,
     pub identifier: String,
     pub language: String,
     pub modified: String,
+}
+
+impl MinimalMetadata {
+    /// 利用者が指定した書誌情報と、ビルド時に決まる値からEPUB出力用の値を作る
+    ///
+    /// `identifier` には、利用者の指定値または自動生成したUUIDを呼び出し側で渡す。
+    pub fn from_publication(
+        metadata: &PublicationMetadata,
+        identifier: String,
+        modified: String,
+    ) -> Self {
+        Self {
+            title: metadata.title.clone(),
+            title_file_as: metadata.title_file_as.clone(),
+            creator: metadata.creator.clone(),
+            description: metadata.description.clone(),
+            publisher: metadata.publisher.clone(),
+            identifier,
+            language: metadata.language.clone(),
+            modified,
+        }
+    }
 }
 
 /// 生成した1つの XHTML コンテンツ文書と、その EPUB 内の相対パス
@@ -149,7 +178,20 @@ fn generate_package_opf(
         &[("id", "pub-id")],
         &metadata.identifier,
     )?;
-    text_element(&mut writer, "dc:title", &[], &metadata.title)?;
+    text_element(&mut writer, "dc:title", &[("id", "title")], &metadata.title)?;
+    write_optional_refinement(
+        &mut writer,
+        "#title",
+        "file-as",
+        metadata.title_file_as.as_deref(),
+    )?;
+    write_creator_metadata(&mut writer, metadata.creator.as_ref())?;
+    write_optional_dc_element(
+        &mut writer,
+        "dc:description",
+        metadata.description.as_deref(),
+    )?;
+    write_optional_dc_element(&mut writer, "dc:publisher", metadata.publisher.as_deref())?;
     text_element(&mut writer, "dc:language", &[], &metadata.language)?;
     text_element(
         &mut writer,
@@ -250,6 +292,76 @@ fn generate_package_opf(
     end(&mut writer, "package")?;
 
     into_string(writer)
+}
+
+/// 著者と、その著者を対象にしたrefinement要素を出力する
+fn write_creator_metadata(
+    writer: &mut Writer<Vec<u8>>,
+    creator: Option<&CreatorMetadata>,
+) -> Result<(), DocumentError> {
+    let Some(creator) = creator else {
+        return Ok(());
+    };
+
+    text_element(writer, "dc:creator", &[("id", "creator")], &creator.name)?;
+    write_optional_refinement(writer, "#creator", "file-as", creator.file_as.as_deref())?;
+    text_element(
+        writer,
+        "meta",
+        &[
+            ("property", "role"),
+            ("refines", "#creator"),
+            ("scheme", "marc:relators"),
+        ],
+        creator.role.as_deref().unwrap_or("aut"),
+    )?;
+
+    if let Some(alternate_script) = &creator.alternate_script {
+        text_element(
+            writer,
+            "meta",
+            &[
+                ("property", "alternate-script"),
+                ("refines", "#creator"),
+                ("xml:lang", &alternate_script.language),
+            ],
+            &alternate_script.value,
+        )?;
+    }
+
+    Ok(())
+}
+
+/// 指定された値を、既存要素を対象とするrefinementとして出力する
+fn write_optional_refinement(
+    writer: &mut Writer<Vec<u8>>,
+    refines: &str,
+    property: &str,
+    value: Option<&str>,
+) -> Result<(), DocumentError> {
+    if let Some(value) = value {
+        text_element(
+            writer,
+            "meta",
+            &[("property", property), ("refines", refines)],
+            value,
+        )?;
+    }
+
+    Ok(())
+}
+
+/// 指定された値を任意のDublin Core要素として出力する
+fn write_optional_dc_element(
+    writer: &mut Writer<Vec<u8>>,
+    name: &str,
+    value: Option<&str>,
+) -> Result<(), DocumentError> {
+    if let Some(value) = value {
+        text_element(writer, name, &[], value)?;
+    }
+
+    Ok(())
 }
 
 fn generate_navigation_xhtml(title: &str, language: &str) -> Result<String, DocumentError> {
@@ -478,7 +590,9 @@ mod tests {
     use std::path::PathBuf;
 
     use super::{MinimalMetadata, generate_documents};
-    use crate::{ImageDimensions, SourceImage};
+    use crate::{
+        AlternateScript, CreatorMetadata, ImageDimensions, PublicationMetadata, SourceImage,
+    };
 
     #[test]
     fn generates_expected_fixed_layout_documents() {
@@ -554,6 +668,63 @@ mod tests {
     }
 
     #[test]
+    // 指定した書誌情報を、OPFの基本要素とrefinement要素へ分けて出力する
+    fn generates_requested_publication_metadata() {
+        let metadata = MinimalMetadata::from_publication(
+            &publication_metadata(),
+            "https://example.com/books/123".to_owned(),
+            "2026-08-27T00:00:00Z".to_owned(),
+        );
+
+        let documents = generate_documents(&images(), &metadata).unwrap();
+
+        assert!(documents.package_opf.contains(
+            "<dc:identifier id=\"pub-id\">https://example.com/books/123</dc:identifier>"
+        ));
+        assert!(
+            documents
+                .package_opf
+                .contains("<dc:title id=\"title\">書籍のタイトル</dc:title>")
+        );
+        assert!(
+            documents.package_opf.contains(
+                "<meta property=\"file-as\" refines=\"#title\">ショセキノタイトル</meta>"
+            )
+        );
+        assert!(
+            documents
+                .package_opf
+                .contains("<dc:creator id=\"creator\">著者名</dc:creator>")
+        );
+        assert!(
+            documents
+                .package_opf
+                .contains("<meta property=\"file-as\" refines=\"#creator\">チョシャメイ</meta>")
+        );
+        assert!(documents.package_opf.contains(
+            "<meta property=\"role\" refines=\"#creator\" scheme=\"marc:relators\">aut</meta>"
+        ));
+        assert!(documents.package_opf.contains(
+            "<meta property=\"alternate-script\" refines=\"#creator\" xml:lang=\"ja-Kana\">チョシャメイ</meta>"
+        ));
+        assert!(
+            documents
+                .package_opf
+                .contains("<dc:description>説明文</dc:description>")
+        );
+        assert!(
+            documents
+                .package_opf
+                .contains("<dc:publisher>発行元</dc:publisher>")
+        );
+        assert!(
+            documents
+                .package_opf
+                .contains("<dc:language>en</dc:language>")
+        );
+    }
+
+    #[test]
     fn rejects_an_empty_image_list() {
         let error = generate_documents(&[], &metadata()).unwrap_err();
 
@@ -564,9 +735,34 @@ mod tests {
         // 固定メタデータを使用することで、文書テストを将来の入力処理から独立させる
         MinimalMetadata {
             title: "Untitled".to_owned(),
+            title_file_as: None,
+            creator: None,
+            description: None,
+            publisher: None,
             identifier: "urn:uuid:00000000-0000-0000-0000-000000000000".to_owned(),
             language: "ja".to_owned(),
             modified: "2026-08-26T00:00:00Z".to_owned(),
+        }
+    }
+
+    /// 任意項目をすべて含む書誌情報を作る
+    fn publication_metadata() -> PublicationMetadata {
+        PublicationMetadata {
+            title: "書籍のタイトル".to_owned(),
+            title_file_as: Some("ショセキノタイトル".to_owned()),
+            creator: Some(CreatorMetadata {
+                name: "著者名".to_owned(),
+                file_as: Some("チョシャメイ".to_owned()),
+                role: None,
+                alternate_script: Some(AlternateScript {
+                    value: "チョシャメイ".to_owned(),
+                    language: "ja-Kana".to_owned(),
+                }),
+            }),
+            description: Some("説明文".to_owned()),
+            publisher: Some("発行元".to_owned()),
+            language: "en".to_owned(),
+            identifier: Some("https://example.com/books/123".to_owned()),
         }
     }
 
