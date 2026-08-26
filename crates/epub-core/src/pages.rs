@@ -1,6 +1,6 @@
-/// Reading SystemがSynthetic Spreadで表示するときのページ位置。
+/// Reading System が Synthetic Spread で表示するときのページ位置
 ///
-/// この値はEPUBの`rendition:page-spread-*`プロパティへ対応する。
+/// この値は EPUB の `rendition:page-spread-*` プロパティへ対応する。
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PagePlacement {
     Left,
@@ -8,10 +8,10 @@ pub enum PagePlacement {
     Center,
 }
 
-/// 0始まりのページ番号に対応するデフォルト位置を返す。
+/// 0 始まりのページ番号に対応するデフォルト位置を返す
 ///
-/// 1ページ目は表紙として中央に配置する。
-/// 2ページ目以降は、将来の上書き機能を考慮せずに右・左を交互に配置する。
+/// - 1 ページ目は表紙として中央に配置する
+/// - 2 ページ目以降は、将来の上書き機能を考慮せずに右・左を交互に配置する
 pub fn default_page_placement(page_index: usize) -> PagePlacement {
     match page_index {
         0 => PagePlacement::Center,

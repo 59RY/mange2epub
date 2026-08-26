@@ -11,9 +11,9 @@ const CONTAINER_PATH: &str = "EPUB/package.opf";
 const PAGE_CSS_PATH: &str = "styles/page.css";
 const NAVIGATION_PATH: &str = "nav.xhtml";
 
-/// EPUBのパッケージ文書に必要な最小限のメタデータ。
+/// EPUB のパッケージ文書に必要な最小限のメタデータ
 ///
-/// 後の入力処理では、利用者が指定した書誌情報からこの値を作成する。
+/// 後の入力処理では、利用者が指定した書誌情報からこの値を作成する
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MinimalMetadata {
     pub title: String,
@@ -22,14 +22,14 @@ pub struct MinimalMetadata {
     pub modified: String,
 }
 
-/// 生成した1つのXHTMLコンテンツ文書と、そのEPUB内の相対パス。
+/// 生成した1つの XHTML コンテンツ文書と、その EPUB 内の相対パス
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PageDocument {
     pub path: String,
     pub contents: String,
 }
 
-/// OCF ZIPコンテナへ書き込む前に生成するEPUBのテキストリソース。
+/// OCF ZIP コンテナへ書き込む前に生成する EPUB のテキストリソース。
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct GeneratedDocuments {
     pub container_xml: String,
@@ -39,7 +39,7 @@ pub struct GeneratedDocuments {
     pub pages: Vec<PageDocument>,
 }
 
-/// EPUBのテキストリソース生成時に発生しうるエラー。
+/// EPUB のテキストリソース生成時に発生しうるエラー
 #[derive(Debug)]
 pub enum DocumentError {
     NoPages,
@@ -67,11 +67,11 @@ impl Error for DocumentError {
     }
 }
 
-/// 順序付けられた画像リストからXHTML、CSS、OPF、コンテナ文書を生成する。
+/// 順序付けられた画像リストから XHTML、CSS、OPF、コンテナ文書を生成する
 ///
-/// 最初の画像が共通の論理的なviewportを決める。
-/// 生成するEPUB内のパスには、入力画像のパスを意図的に含めない。
-/// EPUB内のパスは画像の番号で正規化する。
+/// - 最初の画像が共通の論理的な viewport を決める
+/// - 生成する EPUB 内のパスには、入力画像のパスを意図的に含めない
+/// - EPUB 内のパスは画像の番号で正規化する
 pub fn generate_documents(
     images: &[SourceImage],
     metadata: &MinimalMetadata,
@@ -95,7 +95,7 @@ pub fn generate_documents(
 }
 
 fn generate_container_xml() -> Result<String, DocumentError> {
-    // `container.xml`は、パッケージ文書の保存先をEPUBリーダーへ伝える。
+    // `container.xml` は、パッケージ文書の保存先を EPUB 各種ビューアーに伝える
     let mut writer = xml_writer();
     write_declaration(&mut writer)?;
 
@@ -126,7 +126,7 @@ fn generate_package_opf(
     page_count: usize,
     metadata: &MinimalMetadata,
 ) -> Result<String, DocumentError> {
-    // パッケージ文書は、メタデータ、manifest、読書順をまとめて持つ。
+    // パッケージ文書は、メタデータ、manifest、読書順をまとめて持つ
     let mut writer = xml_writer();
     write_declaration(&mut writer)?;
 
@@ -253,7 +253,7 @@ fn generate_package_opf(
 }
 
 fn generate_navigation_xhtml(title: &str, language: &str) -> Result<String, DocumentError> {
-    // 利用者が定義する目次項目がまだなくても、ナビゲーション文書は必要である。
+    // 利用者が定義する目次項目がなくても、ナビゲーション文書は必要
     let mut writer = xml_writer();
     write_declaration(&mut writer)?;
     write_doctype(&mut writer)?;
@@ -296,8 +296,8 @@ fn generate_page_document(
     language: &str,
     _image: &SourceImage,
 ) -> Result<PageDocument, DocumentError> {
-    // 各画像に1つのXHTML文書を割り当てる。
-    // すべてのページで、最初の画像から得た共通のviewport寸法を使う。
+    // 各画像に1つの XHTML 文書を割り当てる
+    // すべてのページで、最初の画像から得た共通の viewport 寸法を使用する
     let mut writer = xml_writer();
     write_declaration(&mut writer)?;
     write_doctype(&mut writer)?;
@@ -350,7 +350,8 @@ fn generate_page_document(
 }
 
 fn page_css() -> String {
-    // このスタイルシートはブラウザの既定値を取り除き、画像をviewport全体に表示する。
+    // このCSSの主旨:
+    // ブラウザの既定値を取り除き、画像を viewport 全体に表示する
     [
         "html, body {",
         "  width: 100%;",
@@ -371,28 +372,28 @@ fn page_css() -> String {
 }
 
 fn page_id(index: usize) -> String {
-    // IDは順序付けたページ番号だけを基にするため、安定している。
+    // ID は順序付けたページ番号だけを基にする
     format!("page-{index:04}")
 }
 
 fn image_id(index: usize) -> String {
-    // 画像IDは、XHTMLページのIDと衝突しないよう別の接頭辞を使う。
+    // 画像 ID は別の接頭辞を使用する。XHTML ページの ID と衝突しないため
     format!("image-{index:04}")
 }
 
 fn page_path(index: usize) -> String {
-    // EPUB内部の名前からは、元の入力ファイル名が分からないようにする。
+    // EPUB 内部の名前からは、元の入力ファイル名が分からないようにする
     format!("pages/page-{index:04}.xhtml")
 }
 
 fn image_path(index: usize) -> String {
-    // 出力では、この版が対応する正規化済みのJPEG拡張子を常に使う。
+    // 出力では、この版が対応する正規化済みの JPEG 拡張子を常に使用する
     format!("images/image-{index:04}.jpg")
 }
 
 fn placement_property(placement: PagePlacement) -> &'static str {
-    // コアコードではenumを使い、出力境界でEPUBの語彙へ変換する。
-    // この値は、パッケージ文書のspineにある`itemref`要素へ書き出す。
+    // コアコードでは enum を使い、出力境界で EPUB の語彙へ変換する
+    // この値は、パッケージ文書の spine にある `itemref` 要素へ書き出す
     match placement {
         PagePlacement::Left => "rendition:page-spread-left",
         PagePlacement::Right => "rendition:page-spread-right",
@@ -401,12 +402,12 @@ fn placement_property(placement: PagePlacement) -> &'static str {
 }
 
 fn xml_writer() -> Writer<Vec<u8>> {
-    // インデントを付けてもXMLの意味は変わらず、生成文書を確認しやすくできる。
+    // インデントを付与（視認性向上）
     Writer::new_with_indent(Vec::new(), b' ', 2)
 }
 
 fn write_declaration(writer: &mut Writer<Vec<u8>>) -> Result<(), DocumentError> {
-    // EPUBのXML文書はUTF-8のため、文字エンコーディングを明示する。
+    // 文字エンコーディングを明示
     write_event(
         writer,
         Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)),
@@ -414,7 +415,7 @@ fn write_declaration(writer: &mut Writer<Vec<u8>>) -> Result<(), DocumentError> 
 }
 
 fn write_doctype(writer: &mut Writer<Vec<u8>>) -> Result<(), DocumentError> {
-    // XHTMLコンテンツ文書にはHTMLのdoctypeを使う。
+    // HTMLのdoctypeを使用する
     write_event(writer, Event::DocType(BytesText::new("html")))
 }
 
@@ -423,7 +424,7 @@ fn start(
     name: &str,
     attributes: &[(&str, &str)],
 ) -> Result<(), DocumentError> {
-    // 属性値が適切にエスケープされるよう、`quick-xml`で属性を組み立てる。
+    // `quick-xml` で属性を組み立てる（属性値が適切にエスケープされるために）
     let mut element = BytesStart::new(name);
     for (key, value) in attributes {
         element.push_attribute((*key, *value));
@@ -436,7 +437,7 @@ fn empty(
     name: &str,
     attributes: &[(&str, &str)],
 ) -> Result<(), DocumentError> {
-    // XHTMLのメタデータとOPFのmanifest項目には空要素を使う。
+    // XHTML のメタデータと OPF の manifest 項目には空要素を使用する
     let mut element = BytesStart::new(name);
     for (key, value) in attributes {
         element.push_attribute((*key, *value));
@@ -450,28 +451,28 @@ fn text_element(
     attributes: &[(&str, &str)],
     text: &str,
 ) -> Result<(), DocumentError> {
-    // テキストノードも`quick-xml`を通すことで、XMLエスケープを任せる。
+    // テキストノードも `quick-xml` を通すことで、XMLエスケープを任せる
     start(writer, name, attributes)?;
     write_event(writer, Event::Text(BytesText::new(text)))?;
     end(writer, name)
 }
 
 fn end(writer: &mut Writer<Vec<u8>>, name: &str) -> Result<(), DocumentError> {
-    // 対応する終了タグを1つのヘルパーにまとめ、writer呼び出しの重複を減らす。
+    // 対応する終了タグを1つのヘルパーにまとめ、writer 呼び出しの重複を減らす
     write_event(writer, Event::End(BytesEnd::new(name)))
 }
 
 fn write_event(writer: &mut Writer<Vec<u8>>, event: Event<'_>) -> Result<(), DocumentError> {
-    // 低水準のwriterエラーを、文書生成処理のエラー型へ変換する。
+    // 低水準の writer エラーを、文書生成処理のエラー型へ変換する
     writer.write_event(event).map_err(DocumentError::WriteXml)
 }
 
 fn into_string(writer: Writer<Vec<u8>>) -> Result<String, DocumentError> {
-    // XMLはUTF-8のバイト列として出力してから、EPUBのテキストリソースにする。
+    // XML は UTF-8 のバイト列として出力してから、EPUB のテキストリソースにする
     String::from_utf8(writer.into_inner()).map_err(DocumentError::InvalidUtf8)
 }
 
-// 単体テストでは、後の出力処理がZIPエントリへ書き込む前のテキストリソースを確認する。
+// 単体テストでは、後の出力処理が ZIP エントリへ書き込む前のテキストリソースを確認する
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
@@ -560,7 +561,7 @@ mod tests {
     }
 
     fn metadata() -> MinimalMetadata {
-        // 固定メタデータを使うことで、文書テストを将来の入力処理から独立させる。
+        // 固定メタデータを使用することで、文書テストを将来の入力処理から独立させる
         MinimalMetadata {
             title: "Untitled".to_owned(),
             identifier: "urn:uuid:00000000-0000-0000-0000-000000000000".to_owned(),
@@ -570,7 +571,7 @@ mod tests {
     }
 
     fn images() -> Vec<SourceImage> {
-        // 生成する名前はページ番号を使うため、入力パスは意図的に任意の値にしている。
+        // 生成する名前はページ番号を使用するため、入力パスは意図的に任意の値にしている
         (0..3)
             .map(|index| SourceImage {
                 path: PathBuf::from(format!("source-{index}.jpg")),

@@ -13,7 +13,7 @@ use crate::{GeneratedDocuments, SourceImage};
 const EPUB_DIRECTORY: &str = "EPUB";
 const MIMETYPE: &str = "application/epub+zip";
 
-/// EPUB Open Container Formatアーカイブの書き込み時に発生しうるエラー。
+/// EPUB Open Container Format アーカイブの書き込み時に発生しうるエラー
 #[derive(Debug)]
 pub enum PackageError {
     CreateOutput {
@@ -73,7 +73,7 @@ impl Error for PackageError {
     }
 }
 
-/// 生成したEPUBリソースと入力JPEGをOCF ZIPアーカイブへ書き込む。
+/// 生成した EPUB リソース および 入力 JPEG を OCF ZIP アーカイブへ書き込む
 pub fn write_epub(
     output_path: &Path,
     images: &[SourceImage],
@@ -98,7 +98,7 @@ pub fn write_epub(
     let stored = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
     let deflated = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
 
-    // EPUBでは、この完全一致の先頭エントリを無圧縮で格納する必要がある。
+    // EPUB では、この完全一致の先頭エントリを無圧縮で格納する必要あり
     write_bytes(&mut archive, "mimetype", MIMETYPE.as_bytes(), stored)?;
 
     write_bytes(
@@ -146,7 +146,7 @@ fn write_bytes(
     contents: &[u8],
     options: SimpleFileOptions,
 ) -> Result<(), PackageError> {
-    // テキストリソースは、アーカイブへ入る前に完全なバイト列になっている。
+    // テキストリソースは、アーカイブへ入る前に完全なバイト列になっている
     archive
         .start_file(path, options)
         .map_err(PackageError::Zip)?;
@@ -161,8 +161,8 @@ fn write_image(
     image: &SourceImage,
     options: SimpleFileOptions,
 ) -> Result<(), PackageError> {
-    // 入力JPEGのバイト列をZIPエントリへ直接ストリームする。
-    // デコーダーもエンコーダーも使わないため、格納する画像のバイト列は変わらない。
+    // 入力 JPEG のバイト列を ZIP エントリへ直接ストリームする。
+    // デコーダーもエンコーダーも使わないため、格納する画像のバイト列は変わらない
     let mut input = File::open(&image.path).map_err(|source| PackageError::ReadImage {
         path: image.path.clone(),
         source,
@@ -175,11 +175,11 @@ fn write_image(
 }
 
 fn epub_path(path: &str) -> String {
-    // 文書生成処理は、EPUBディレクトリからの相対パスを返す。
+    // 文書生成処理は、EPUB ディレクトリからの相対パスを返す
     format!("{EPUB_DIRECTORY}/{path}")
 }
 
-// 単体テストでは、CLIコマンドに依存せずに書き出したZIPアーカイブを検査する。
+// 単体テストでは、CLI コマンドに依存せずに書き出した ZIP アーカイブを検査する
 #[cfg(test)]
 mod tests {
     use std::{
@@ -302,7 +302,7 @@ mod tests {
     }
 
     fn jpeg_header(width: u16, height: u16) -> Vec<u8> {
-        // SOF0セグメントは、パッケージングテスト用の小さく有効なヘッダーになる。
+        // SOF0 セグメントは、パッケージングテスト用の小さく有効なヘッダーになる
         let mut bytes = vec![0xff, 0xd8, 0xff, 0xc0, 0x00, 0x11, 0x08];
         bytes.extend_from_slice(&height.to_be_bytes());
         bytes.extend_from_slice(&width.to_be_bytes());
@@ -312,7 +312,7 @@ mod tests {
     }
 
     fn sha256(bytes: &[u8]) -> [u8; 32] {
-        // ダイジェスト値を使うことで、画像の複製を保持せずに安定したバイト単位比較を行える。
+        // ダイジェスト値を使用することで、画像の複製を保持せずに安定したバイト単位比較を行える
         Sha256::digest(bytes).into()
     }
 
