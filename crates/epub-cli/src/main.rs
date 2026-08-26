@@ -3,7 +3,7 @@ use std::{path::PathBuf, process::ExitCode};
 use clap::{Args, Parser, Subcommand};
 use epub_core::{BuildError, BuildReport, BuildRequest, build_epub};
 
-/// Command-line interface for creating manga EPUB files.
+/// 漫画のEPUBファイルを作成するコマンドラインインターフェース。
 #[derive(Debug, Parser)]
 #[command(name = "manga2epub", version, about)]
 struct Cli {
@@ -11,20 +11,20 @@ struct Cli {
     command: Command,
 }
 
-/// Commands that the application currently supports.
+/// 現在アプリケーションが対応しているコマンド。
 #[derive(Debug, Subcommand)]
 enum Command {
-    /// Build an EPUB from a directory of JPEG images.
+    /// JPEG画像のディレクトリからEPUBを生成する。
     Build(BuildArguments),
 }
 
-/// Arguments accepted by the `build` command.
+/// `build`コマンドが受け取る引数。
 #[derive(Args, Debug)]
 struct BuildArguments {
-    /// Directory containing JPEG page images.
+    /// ページ画像のJPEGが入ったディレクトリ。
     image_directory: PathBuf,
 
-    /// Path of the EPUB file to create.
+    /// 生成するEPUBファイルのパス。
     #[arg(short, long)]
     output: PathBuf,
 }
@@ -49,7 +49,7 @@ fn main() -> ExitCode {
 }
 
 fn run(command: Command) -> Result<BuildReport, BuildError> {
-    // Argument parsing stays in this crate, while EPUB creation remains in epub-core.
+    // 引数解析はこのcrateで行い、EPUB生成処理はepub-coreに置く。
     match command {
         Command::Build(arguments) => build_epub(&BuildRequest {
             image_directory: arguments.image_directory,
@@ -58,7 +58,7 @@ fn run(command: Command) -> Result<BuildReport, BuildError> {
     }
 }
 
-// Unit tests verify the command-line contract without creating EPUB files.
+// 単体テストでは、EPUBファイルを生成せずにコマンドラインの契約を確認する。
 #[cfg(test)]
 mod tests {
     use std::{
@@ -109,7 +109,7 @@ mod tests {
     }
 
     fn write_jpeg(path: PathBuf) {
-        // A SOF0 segment is enough for the core input reader to obtain dimensions.
+        // コアの入力処理が画像サイズを取得するには、SOF0セグメントだけで十分である。
         let bytes = [
             0xff, 0xd8, 0xff, 0xc0, 0x00, 0x11, 0x08, 0x06, 0xdf, 0x04, 0xb0, 0x03, 0x01, 0x11,
             0x00, 0x02, 0x11, 0x00, 0x03, 0x11, 0x00, 0xff, 0xd9,

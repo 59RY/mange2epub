@@ -13,7 +13,7 @@ use crate::{GeneratedDocuments, SourceImage};
 const EPUB_DIRECTORY: &str = "EPUB";
 const MIMETYPE: &str = "application/epub+zip";
 
-/// Errors that can occur while writing an EPUB Open Container Format archive.
+/// EPUB Open Container Formatアーカイブの書き込み時に発生しうるエラー。
 #[derive(Debug)]
 pub enum PackageError {
     CreateOutput {
@@ -73,7 +73,7 @@ impl Error for PackageError {
     }
 }
 
-/// Writes generated EPUB resources and their source JPEGs into an OCF ZIP archive.
+/// 生成したEPUBリソースと入力JPEGをOCF ZIPアーカイブへ書き込む。
 pub fn write_epub(
     output_path: &Path,
     images: &[SourceImage],
@@ -98,7 +98,7 @@ pub fn write_epub(
     let stored = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
     let deflated = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
 
-    // EPUB requires this exact first entry to be stored without compression.
+    // EPUBでは、この完全一致の先頭エントリを無圧縮で格納する必要がある。
     write_bytes(&mut archive, "mimetype", MIMETYPE.as_bytes(), stored)?;
 
     write_bytes(
@@ -146,7 +146,7 @@ fn write_bytes(
     contents: &[u8],
     options: SimpleFileOptions,
 ) -> Result<(), PackageError> {
-    // Text resources are already complete byte slices before they enter the archive.
+    // テキストリソースは、アーカイブへ入る前に完全なバイト列になっている。
     archive
         .start_file(path, options)
         .map_err(PackageError::Zip)?;
@@ -161,8 +161,8 @@ fn write_image(
     image: &SourceImage,
     options: SimpleFileOptions,
 ) -> Result<(), PackageError> {
-    // Stream bytes directly from the source JPEG into the ZIP entry.
-    // No decoder or encoder is involved, so the stored image bytes are unchanged.
+    // 入力JPEGのバイト列をZIPエントリへ直接ストリームする。
+    // デコーダーもエンコーダーも使わないため、格納する画像のバイト列は変わらない。
     let mut input = File::open(&image.path).map_err(|source| PackageError::ReadImage {
         path: image.path.clone(),
         source,
@@ -175,11 +175,11 @@ fn write_image(
 }
 
 fn epub_path(path: &str) -> String {
-    // Document generation returns paths relative to the EPUB directory.
+    // 文書生成処理は、EPUBディレクトリからの相対パスを返す。
     format!("{EPUB_DIRECTORY}/{path}")
 }
 
-// Unit tests inspect the written ZIP archive instead of depending on a CLI command.
+// 単体テストでは、CLIコマンドに依存せずに書き出したZIPアーカイブを検査する。
 #[cfg(test)]
 mod tests {
     use std::{
@@ -302,7 +302,7 @@ mod tests {
     }
 
     fn jpeg_header(width: u16, height: u16) -> Vec<u8> {
-        // A SOF0 segment provides a compact valid header for packaging tests.
+        // SOF0セグメントは、パッケージングテスト用の小さく有効なヘッダーになる。
         let mut bytes = vec![0xff, 0xd8, 0xff, 0xc0, 0x00, 0x11, 0x08];
         bytes.extend_from_slice(&height.to_be_bytes());
         bytes.extend_from_slice(&width.to_be_bytes());
@@ -312,7 +312,7 @@ mod tests {
     }
 
     fn sha256(bytes: &[u8]) -> [u8; 32] {
-        // Digest output gives a stable byte-for-byte comparison without retaining image copies.
+        // ダイジェスト値を使うことで、画像の複製を保持せずに安定したバイト単位比較を行える。
         Sha256::digest(bytes).into()
     }
 
