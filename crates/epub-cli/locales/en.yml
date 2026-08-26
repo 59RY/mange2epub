@@ -1,0 +1,28 @@
+_version: 1
+build:
+  succeeded_one_page: "Generated EPUB: %{path} (%{count} page)"
+  succeeded_multiple_pages: "Generated EPUB: %{path} (%{count} pages)"
+error:
+  with_prefix: "Error: %{message}"
+  read_directory: "could not read image directory: %{path}"
+  read_directory_entry: "could not read a directory entry in: %{path}"
+  read_image: "could not read image: %{path}"
+  invalid_jpeg: "invalid JPEG image %{path}: %{reason}"
+  no_images: "no JPEG images found in: %{path}"
+  no_pages: "cannot generate EPUB documents without pages"
+  write_xml: "could not write an EPUB XML document"
+  invalid_utf8: "generated XML was not valid UTF-8"
+  create_output: "could not create EPUB output: %{path}"
+  read_image_for_output: "could not read image for EPUB output: %{path}"
+  write_archive: "could not write EPUB archive data"
+  create_zip: "could not create EPUB ZIP archive"
+  page_count_mismatch: "cannot package %{image_count} images with %{page_count} generated pages"
+  truncate_modified: "could not truncate EPUB modified timestamp"
+  format_modified: "could not format EPUB modified timestamp"
+jpeg:
+  missing_start_of_image: "missing start-of-image marker"
+  short_start_of_frame: "start-of-frame segment is too short"
+  zero_dimensions: "image dimensions must be at least 1 pixel"
+  missing_start_of_frame: "missing start-of-frame marker"
+  start_of_frame_after_data: "start-of-frame marker appears after image data"
+  short_segment: "segment length is smaller than its header"

@@ -1,0 +1,28 @@
+_version: 1
+build:
+  succeeded_one_page: "EPUB を生成しました: %{path} (%{count} ページ)"
+  succeeded_multiple_pages: "EPUB を生成しました: %{path} (%{count} ページ)"
+error:
+  with_prefix: "エラー: %{message}"
+  read_directory: "画像ディレクトリを読み取れませんでした: %{path}"
+  read_directory_entry: "ディレクトリ内の項目を読み取れませんでした: %{path}"
+  read_image: "画像を読み取れませんでした: %{path}"
+  invalid_jpeg: "無効な JPEG 画像です %{path}: %{reason}"
+  no_images: "JPEG 画像が見つかりません: %{path}"
+  no_pages: "ページがないため EPUB 文書を生成できません"
+  write_xml: "EPUB の XML 文書を書き込めませんでした"
+  invalid_utf8: "生成した XML が有効な UTF-8 ではありません"
+  create_output: "EPUB 出力ファイルを作成できませんでした: %{path}"
+  read_image_for_output: "EPUB へ収録する画像を読み取れませんでした: %{path}"
+  write_archive: "EPUB アーカイブへデータを書き込めませんでした"
+  create_zip: "EPUB の ZIP アーカイブを作成できませんでした"
+  page_count_mismatch: "%{image_count} 枚の画像と %{page_count} ページの文書を組み合わせられません"
+  truncate_modified: "EPUB の更新日時から 1 秒未満の端数を切り捨てられませんでした"
+  format_modified: "EPUB の更新日時を書式化できませんでした"
+jpeg:
+  missing_start_of_image: "SOI マーカーがありません"
+  short_start_of_frame: "SOF セグメントが短すぎます"
+  zero_dimensions: "画像の幅と高さは 1 ピクセル以上である必要があります"
+  missing_start_of_frame: "SOF マーカーがありません"
+  start_of_frame_after_data: "画像データより後に SOF マーカーがあります"
+  short_segment: "セグメント長がヘッダーより短くなっています"

@@ -1,14 +1,52 @@
 use std::{path::PathBuf, process::ExitCode};
 
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use epub_core::{BuildError, BuildReport, BuildRequest, build_epub};
+
+mod i18n;
+
+rust_i18n::i18n!("locales", fallback = "en");
 
 /// 漫画の EPUB ファイルを作成する CLI
 #[derive(Debug, Parser)]
 #[command(name = "manga2epub", version, about)]
 struct Cli {
+    /// 表示言語 / Display locale
+    #[arg(long, global = true, value_enum)]
+    locale: Option<Locale>,
+
     #[command(subcommand)]
     command: Command,
+}
+
+/// CLI が利用者向けメッセージに使用するロケール
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum Locale {
+    En,
+    Ja,
+}
+
+impl Locale {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::En => "en",
+            Self::Ja => "ja",
+        }
+    }
+
+    fn from_system_locale(locale: &str) -> Option<Self> {
+        let language = locale
+            .split(['-', '_', '.', '@'])
+            .next()
+            .unwrap_or(locale)
+            .to_ascii_lowercase();
+
+        match language.as_str() {
+            "ja" => Some(Self::Ja),
+            "en" => Some(Self::En),
+            _ => None,
+        }
+    }
 }
 
 /// 現在アプリケーションが対応しているコマンド
@@ -31,21 +69,24 @@ struct BuildArguments {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
+    let locale = resolve_locale(cli.locale, sys_locale::get_locale().as_deref());
 
     match run(cli.command) {
         Ok(report) => {
-            println!(
-                "EPUB を生成しました: {} ({}ページ)",
-                report.output_path.display(),
-                report.page_count
-            );
+            println!("{}", i18n::build_succeeded(&report, locale));
             ExitCode::SUCCESS
         }
         Err(error) => {
-            eprintln!("エラー: {error}");
+            eprintln!("{}", i18n::build_failed(&error, locale));
             ExitCode::FAILURE
         }
     }
+}
+
+fn resolve_locale(explicit: Option<Locale>, system_locale: Option<&str>) -> Locale {
+    explicit
+        .or_else(|| system_locale.and_then(Locale::from_system_locale))
+        .unwrap_or(Locale::En)
 }
 
 fn run(command: Command) -> Result<BuildReport, BuildError> {
@@ -69,7 +110,7 @@ mod tests {
 
     use clap::Parser;
 
-    use super::{BuildArguments, Cli, Command, run};
+    use super::{BuildArguments, Cli, Command, Locale, resolve_locale, run};
 
     static NEXT_TEST_DIRECTORY: AtomicUsize = AtomicUsize::new(0);
 
@@ -80,6 +121,7 @@ mod tests {
                 .unwrap();
 
         let Command::Build(arguments) = cli.command;
+        assert_eq!(cli.locale, None);
         assert_eq!(arguments.image_directory.to_string_lossy(), "./images");
         assert_eq!(arguments.output.to_string_lossy(), "./book.epub");
     }
@@ -106,6 +148,31 @@ mod tests {
         assert_eq!(report.output_path, output);
         assert_eq!(report.page_count, 1);
         assert!(report.output_path.is_file());
+    }
+
+    #[test]
+    fn parses_an_english_display_locale() {
+        let cli = Cli::try_parse_from([
+            "manga2epub",
+            "--locale",
+            "en",
+            "build",
+            "./images",
+            "--output",
+            "./book.epub",
+        ])
+        .unwrap();
+
+        assert_eq!(cli.locale, Some(Locale::En));
+    }
+
+    #[test]
+    fn selects_the_display_locale_in_priority_order() {
+        assert_eq!(resolve_locale(Some(Locale::En), Some("ja_JP")), Locale::En);
+        assert_eq!(resolve_locale(None, Some("ja_JP.UTF-8")), Locale::Ja);
+        assert_eq!(resolve_locale(None, Some("en-US")), Locale::En);
+        assert_eq!(resolve_locale(None, Some("fr-FR")), Locale::En);
+        assert_eq!(resolve_locale(None, None), Locale::En);
     }
 
     fn write_jpeg(path: PathBuf) {
