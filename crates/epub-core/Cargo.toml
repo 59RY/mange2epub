@@ -11,3 +11,7 @@ name = "epub_core"
 
 [dependencies]
 quick-xml = "0.39"
+zip = { version = "7", default-features = false, features = ["deflate"] }
+
+[dev-dependencies]
+sha2 = "0.10"

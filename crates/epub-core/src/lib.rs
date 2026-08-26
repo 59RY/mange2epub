@@ -5,10 +5,12 @@
 
 mod documents;
 mod images;
+mod package;
 mod pages;
 
 pub use documents::{
     DocumentError, GeneratedDocuments, MinimalMetadata, PageDocument, generate_documents,
 };
 pub use images::{ImageCollectionError, ImageDimensions, SourceImage, collect_jpeg_images};
+pub use package::{PackageError, write_epub};
 pub use pages::{PagePlacement, default_page_placement};

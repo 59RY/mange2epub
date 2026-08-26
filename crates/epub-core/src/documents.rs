@@ -69,8 +69,9 @@ impl Error for DocumentError {
 
 /// Generates the XHTML, CSS, OPF, and container documents for an ordered image list.
 ///
-/// The first image establishes the shared logical viewport. The image source paths
-/// are intentionally absent from generated EPUB paths, which are normalized by index.
+/// The first image establishes the shared logical viewport.
+/// The image source paths are intentionally absent from generated EPUB paths,
+/// which are normalized by index.
 pub fn generate_documents(
     images: &[SourceImage],
     metadata: &MinimalMetadata,
@@ -249,7 +250,8 @@ fn generate_package_opf(
 }
 
 fn generate_navigation_xhtml(title: &str, language: &str) -> Result<String, DocumentError> {
-    // A navigation document is required even before user-defined table-of-contents entries exist.
+    // A navigation document is required
+    // even before user-defined table-of-contents entries exist.
     let mut writer = xml_writer();
     write_declaration(&mut writer)?;
     write_doctype(&mut writer)?;
