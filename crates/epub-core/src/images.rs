@@ -21,18 +21,57 @@ pub struct SourceImage {
     pub dimensions: ImageDimensions,
 }
 
+/// JPEG の構造を検証できなかった理由
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum InvalidJpegReason {
+    MissingStartOfImage,
+    ShortStartOfFrame,
+    ZeroDimensions,
+    MissingStartOfFrame,
+    StartOfFrameAfterImageData,
+    ShortSegment,
+}
+
+impl fmt::Display for InvalidJpegReason {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let message = match self {
+            Self::MissingStartOfImage => "missing start-of-image marker",
+            Self::ShortStartOfFrame => "start-of-frame segment is too short",
+            Self::ZeroDimensions => "image dimensions must be greater than zero",
+            Self::MissingStartOfFrame => "missing start-of-frame marker",
+            Self::StartOfFrameAfterImageData => "start-of-frame marker appears after image data",
+            Self::ShortSegment => "segment length is smaller than its header",
+        };
+        formatter.write_str(message)
+    }
+}
+
 /// 入力 JPEG ファイルの収集時に発生しうるエラー
 #[derive(Debug)]
 pub enum ImageCollectionError {
-    ReadDirectory { path: PathBuf, source: io::Error },
-    ReadDirectoryEntry { path: PathBuf, source: io::Error },
-    ReadImage { path: PathBuf, source: io::Error },
-    InvalidJpeg { path: PathBuf, reason: &'static str },
-    NoImages { directory: PathBuf },
+    ReadDirectory {
+        path: PathBuf,
+        source: io::Error,
+    },
+    ReadDirectoryEntry {
+        path: PathBuf,
+        source: io::Error,
+    },
+    ReadImage {
+        path: PathBuf,
+        source: io::Error,
+    },
+    InvalidJpeg {
+        path: PathBuf,
+        reason: InvalidJpegReason,
+    },
+    NoImages {
+        directory: PathBuf,
+    },
 }
 
 impl fmt::Display for ImageCollectionError {
-    /// CLI が利用者へ直接表示できる形式で各エラーを表す
+    /// ロケールを扱わない呼び出し元向けに、英語の標準表現を返す
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::ReadDirectory { path, .. } => {
@@ -221,7 +260,7 @@ fn read_jpeg_dimensions(path: &Path) -> Result<ImageDimensions, ImageCollectionE
 
     let start = read_u16(&mut reader, path)?;
     if start != 0xffd8 {
-        return Err(invalid_jpeg(path, "missing start-of-image marker"));
+        return Err(invalid_jpeg(path, InvalidJpegReason::MissingStartOfImage));
     }
 
     loop {
@@ -230,7 +269,7 @@ fn read_jpeg_dimensions(path: &Path) -> Result<ImageDimensions, ImageCollectionE
         if is_start_of_frame(marker) {
             let segment_length = read_u16(&mut reader, path)?;
             if segment_length < 8 {
-                return Err(invalid_jpeg(path, "start-of-frame segment is too short"));
+                return Err(invalid_jpeg(path, InvalidJpegReason::ShortStartOfFrame));
             }
 
             let _precision = read_byte(&mut reader, path)?;
@@ -238,31 +277,25 @@ fn read_jpeg_dimensions(path: &Path) -> Result<ImageDimensions, ImageCollectionE
             let width = read_u16(&mut reader, path)? as u32;
 
             if width == 0 || height == 0 {
-                return Err(invalid_jpeg(
-                    path,
-                    "image dimensions must be greater than zero",
-                ));
+                return Err(invalid_jpeg(path, InvalidJpegReason::ZeroDimensions));
             }
 
             return Ok(ImageDimensions { width, height });
         }
 
         match marker {
-            0xd9 => return Err(invalid_jpeg(path, "missing start-of-frame marker")),
+            0xd9 => return Err(invalid_jpeg(path, InvalidJpegReason::MissingStartOfFrame)),
             0xda => {
                 return Err(invalid_jpeg(
                     path,
-                    "start-of-frame marker appears after image data",
+                    InvalidJpegReason::StartOfFrameAfterImageData,
                 ));
             }
             0xd8 | 0x01 | 0xd0..=0xd7 => continue,
             _ => {
                 let segment_length = read_u16(&mut reader, path)?;
                 if segment_length < 2 {
-                    return Err(invalid_jpeg(
-                        path,
-                        "segment length is smaller than its header",
-                    ));
+                    return Err(invalid_jpeg(path, InvalidJpegReason::ShortSegment));
                 }
 
                 skip_bytes(&mut reader, usize::from(segment_length - 2), path)?;
@@ -343,7 +376,7 @@ fn skip_bytes(
     Ok(())
 }
 
-fn invalid_jpeg(path: &Path, reason: &'static str) -> ImageCollectionError {
+fn invalid_jpeg(path: &Path, reason: InvalidJpegReason) -> ImageCollectionError {
     // 検証エラーの生成方法を統一し、原因となったパスを保持する。
     ImageCollectionError::InvalidJpeg {
         path: path.to_path_buf(),

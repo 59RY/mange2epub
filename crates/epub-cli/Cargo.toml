@@ -13,3 +13,5 @@ path = "src/main.rs"
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 epub-core = { path = "../epub-core" }
+rust-i18n = "4.2.1"
+sys-locale = "0.3.2"
