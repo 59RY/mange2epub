@@ -8,21 +8,21 @@ use crate::{
     generate_documents, write_epub,
 };
 
-/// Input paths for one EPUB build.
+/// 1回の EPUB 生成に必要な入力パス
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BuildRequest {
     pub image_directory: PathBuf,
     pub output_path: PathBuf,
 }
 
-/// A concise summary returned after a successful EPUB build.
+/// EPUB 生成が成功したときに返す結果
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BuildReport {
     pub output_path: PathBuf,
     pub page_count: usize,
 }
 
-/// Errors that can occur while performing the complete EPUB build operation.
+/// EPUB 生成処理全体で発生しうるエラー
 #[derive(Debug)]
 pub enum BuildError {
     CollectImages(ImageCollectionError),
@@ -60,7 +60,7 @@ impl Error for BuildError {
     }
 }
 
-/// Builds an EPUB from the JPEG images located directly inside `image_directory`.
+/// `image_directory` 直下にある JPEG 画像から EPUB を生成する。
 pub fn build_epub(request: &BuildRequest) -> Result<BuildReport, BuildError> {
     let images =
         collect_jpeg_images(&request.image_directory).map_err(BuildError::CollectImages)?;
@@ -76,8 +76,8 @@ pub fn build_epub(request: &BuildRequest) -> Result<BuildReport, BuildError> {
 }
 
 fn default_metadata() -> Result<MinimalMetadata, BuildError> {
-    // The first usable build has no metadata input yet.
-    // These values satisfy EPUB's required metadata until a later input layer replaces them.
+    // 最初に利用できるビルドには、まだメタデータの入力機能がない。
+    // 後の入力機能が置き換えるまで、これらの値で EPUB 必須メタデータを満たす
     let modified = format_modified_time(OffsetDateTime::now_utc())?;
 
     Ok(MinimalMetadata {
@@ -89,7 +89,7 @@ fn default_metadata() -> Result<MinimalMetadata, BuildError> {
 }
 
 fn format_modified_time(timestamp: OffsetDateTime) -> Result<String, BuildError> {
-    // EPUB requires a UTC timestamp with second precision, so discard subsecond data first.
+    // 0ナノ秒固定にする。EPUB での時間精度は秒単位のため
     timestamp
         .replace_nanosecond(0)
         .map_err(BuildError::TruncateModifiedTime)?
@@ -97,7 +97,7 @@ fn format_modified_time(timestamp: OffsetDateTime) -> Result<String, BuildError>
         .map_err(BuildError::FormatModifiedTime)
 }
 
-// Unit tests run the complete core workflow without involving command-line argument parsing.
+// 単体テストでは、コマンドライン引数解析を介さずにコアの処理全体を実行する
 #[cfg(test)]
 mod tests {
     use std::{
@@ -136,7 +136,7 @@ mod tests {
     }
 
     fn package_document(path: &Path) -> String {
-        // Read the final OPF from the archive, as a reading system would.
+        // Reading Systemと同じように、アーカイブから最終的な .opf を読み取る
         let file = fs::File::open(path).unwrap();
         let mut archive = ZipArchive::new(file).unwrap();
         let mut package = String::new();
@@ -149,7 +149,7 @@ mod tests {
     }
 
     fn assert_uuid_identifier(package: &str) {
-        // The identifier text is emitted between the first identifier element's tags.
+        // identifier の値は、最初の identifier 要素の開始・終了タグの間に出力される
         let identifier_start = package.find(">urn:uuid:").unwrap() + 1;
         let identifier_end = package[identifier_start..].find('<').unwrap() + identifier_start;
         let identifier = &package[identifier_start..identifier_end];
@@ -159,7 +159,7 @@ mod tests {
     }
 
     fn assert_modified_timestamp(package: &str) {
-        // The required format is fixed-width UTC time with no fractional seconds.
+        // 必須形式は、秒単位・固定長のUTC日時
         let marker = "<meta property=\"dcterms:modified\">";
         let start = package.find(marker).unwrap() + marker.len();
         let end = package[start..].find('<').unwrap() + start;
@@ -171,7 +171,7 @@ mod tests {
     }
 
     fn write_jpeg(path: PathBuf) {
-        // A SOF0 segment is enough for the input reader to obtain dimensions.
+        // SOF0セグメントだけで、コアの入力処理が画像サイズを取得できる
         let bytes = [
             0xff, 0xd8, 0xff, 0xc0, 0x00, 0x11, 0x08, 0x06, 0xdf, 0x04, 0xb0, 0x03, 0x01, 0x11,
             0x00, 0x02, 0x11, 0x00, 0x03, 0x11, 0x00, 0xff, 0xd9,

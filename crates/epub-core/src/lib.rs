@@ -1,7 +1,7 @@
-//! EPUB generation logic shared by the command-line application and a future GUI.
+//! コマンドラインアプリケーションと将来の GUI で共有する EPUB 生成ロジック
 //!
-//! This crate deliberately does not know how a user supplied its input. Its public
-//! API models EPUB concepts and will later expose the build operation itself.
+//! この crate は、入力をどの UI から受け取ったかを意図的に扱わない。
+//! 公開 API は EPUB の概念を表し、今後はビルド処理自体も公開する。
 
 mod build;
 mod documents;

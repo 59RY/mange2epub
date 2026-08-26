@@ -7,21 +7,21 @@ use std::{
     path::{Path, PathBuf},
 };
 
-/// The pixel dimensions read from a JPEG file without decoding or changing it.
+/// JPEG ファイル(Raw)を読み取ったピクセル寸法
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ImageDimensions {
     pub width: u32,
     pub height: u32,
 }
 
-/// An input JPEG selected for inclusion in the publication.
+/// EPUB へ収録する入力 JPEG
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SourceImage {
     pub path: PathBuf,
     pub dimensions: ImageDimensions,
 }
 
-/// Errors that can occur while collecting JPEG input files.
+/// 入力 JPEG ファイルの収集時に発生しうるエラー
 #[derive(Debug)]
 pub enum ImageCollectionError {
     ReadDirectory { path: PathBuf, source: io::Error },
@@ -32,7 +32,7 @@ pub enum ImageCollectionError {
 }
 
 impl fmt::Display for ImageCollectionError {
-    /// Presents each error in a form that the CLI can show directly to a user.
+    /// CLI が利用者へ直接表示できる形式で各エラーを表す
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::ReadDirectory { path, .. } => {
@@ -67,7 +67,7 @@ impl fmt::Display for ImageCollectionError {
 }
 
 impl Error for ImageCollectionError {
-    /// Preserves the operating-system error when one caused this higher-level error.
+    /// この高水準のエラーの原因となった OS のエラーを保持する
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::ReadDirectory { source, .. }
@@ -78,10 +78,10 @@ impl Error for ImageCollectionError {
     }
 }
 
-/// Collects JPEG files directly inside `directory` in deterministic natural filename order.
+/// `directory` 直下のJPEGファイルを、決定的な自然順で収集する
 ///
-/// Only `.jpg` and `.jpeg` extensions are included, ignoring their ASCII case.
-/// The JPEG header is read only far enough to determine the image dimensions.
+/// - ASCII の大文字・小文字を区別せず、`.jpg` と `.jpeg` だけを対象にする
+/// - JPEG ヘッダーは画像サイズを取得できる位置までだけ読み取る
 pub fn collect_jpeg_images(directory: &Path) -> Result<Vec<SourceImage>, ImageCollectionError> {
     let entries =
         fs::read_dir(directory).map_err(|source| ImageCollectionError::ReadDirectory {
@@ -120,8 +120,8 @@ pub fn collect_jpeg_images(directory: &Path) -> Result<Vec<SourceImage>, ImageCo
 }
 
 fn has_jpeg_extension(path: &Path) -> bool {
-    // File extensions are a quick filter;
-    // `read_jpeg_dimensions` still validates the contents before the image is accepted.
+    // 拡張子は高速な絞り込みに使用する。
+    // 画像として受け入れる前に、`read_jpeg_dimensions` が内容も検証する
     path.extension()
         .and_then(|extension| extension.to_str())
         .is_some_and(|extension| {
@@ -130,8 +130,8 @@ fn has_jpeg_extension(path: &Path) -> bool {
 }
 
 fn natural_path_compare(left: &Path, right: &Path) -> Ordering {
-    // The filename determines the user-visible order.
-    // The complete path breaks otherwise equal filenames deterministically.
+    // 利用者に見える順序はファイル名で決める。
+    // 同名の場合は、完全なパスで決定的に順序を決める
     let left_name = left.file_name().unwrap_or_default().to_string_lossy();
     let right_name = right.file_name().unwrap_or_default().to_string_lossy();
 
@@ -139,8 +139,8 @@ fn natural_path_compare(left: &Path, right: &Path) -> Ordering {
 }
 
 fn natural_compare(left: &str, right: &str) -> Ordering {
-    // Compare ASCII digit runs as numbers without parsing an integer.
-    // This avoids overflow for unusually long page numbers.
+    // ASCII の連続した数字を、整数へ変換せず数値として比較する。
+    // これにより、極端に長いページ番号でもオーバーフローしない
     let left = left.as_bytes();
     let right = right.as_bytes();
     let (mut left_index, mut right_index) = (0, 0);
@@ -173,8 +173,8 @@ fn natural_compare(left: &str, right: &str) -> Ordering {
 }
 
 fn digit_run_end(value: &[u8], start: usize) -> usize {
-    // `start` always points at a digit, so the returned index is after at least 1 byte
-    // and can safely be used as a slice boundary.
+    // `start` は常に数字を指すため、返す位置は少なくとも1バイト後になる。
+    // そのため、安全なスライス境界として用いることが可能
     value[start..]
         .iter()
         .position(|byte| !byte.is_ascii_digit())
@@ -182,8 +182,8 @@ fn digit_run_end(value: &[u8], start: usize) -> usize {
 }
 
 fn compare_digit_runs(left: &[u8], right: &[u8]) -> Ordering {
-    // Numeric strings compare by their significant digit count first.
-    // If their numeric values match, fewer leading zeroes sorts first.
+    // 数字列は、まず有効桁数で比較する。
+    // 数値が同じ場合は、先行するゼロが少ない方を先にする
     let left_significant = trim_leading_zeroes(left);
     let right_significant = trim_leading_zeroes(right);
 
@@ -195,8 +195,8 @@ fn compare_digit_runs(left: &[u8], right: &[u8]) -> Ordering {
 }
 
 fn trim_leading_zeroes(value: &[u8]) -> &[u8] {
-    // Keep one zero for an all-zero run
-    // so its numeric representation is never an empty slice.
+    // すべてゼロの連続部分では、ゼロを1つ残す。
+    // これにより、数値表現が空のスライスにならない
     let first_significant = value
         .iter()
         .position(|byte| *byte != b'0')
@@ -210,9 +210,9 @@ fn trim_leading_zeroes(value: &[u8]) -> &[u8] {
 }
 
 fn read_jpeg_dimensions(path: &Path) -> Result<ImageDimensions, ImageCollectionError> {
-    // JPEG records width and height in a Start Of Frame segment.
-    // Reading only up to that segment preserves the input bytes
-    // and avoids allocating pixel data.
+    // JPEG は Start Of Frame セグメントに幅と高さを記録する。
+    // その位置までだけ読み取ることで、
+    // 入力バイト列を保持し、ピクセルデータの確保も避ける
     let file = File::open(path).map_err(|source| ImageCollectionError::ReadImage {
         path: path.to_path_buf(),
         source,
@@ -272,8 +272,9 @@ fn read_jpeg_dimensions(path: &Path) -> Result<ImageDimensions, ImageCollectionE
 }
 
 fn next_marker(reader: &mut impl Read, path: &Path) -> Result<u8, ImageCollectionError> {
-    // JPEG markers begin with 0xFF. Repeated 0xFF bytes are fill bytes,
-    // while 0xFF00 is byte-stuffing and not a marker.
+    // JPEGマーカーは0xFFで始まる。
+    // - 連続する0xFFは埋め込み用バイト。
+    //   0xFF00はバイトスタッフィングのためマーカーではない
     loop {
         if read_byte(reader, path)? != 0xff {
             continue;
@@ -291,8 +292,8 @@ fn next_marker(reader: &mut impl Read, path: &Path) -> Result<u8, ImageCollectio
 }
 
 fn is_start_of_frame(marker: u8) -> bool {
-    // JPEG defines several SOF variants. They all store dimensions in the same initial fields,
-    // while the excluded marker values have other meanings.
+    // JPEG には複数の SOF 形式がある。いずれも先頭の同じフィールドに画像サイズを持つ。
+    // 除外したマーカー値には別の意味がある
     matches!(
         marker,
         0xc0..=0xc3 | 0xc5..=0xc7 | 0xc9..=0xcb | 0xcd..=0xcf
@@ -300,14 +301,14 @@ fn is_start_of_frame(marker: u8) -> bool {
 }
 
 fn read_u16(reader: &mut impl Read, path: &Path) -> Result<u16, ImageCollectionError> {
-    // JPEG stores multi-byte fields in big-endian byte order.
+    // JPEG は複数バイトのフィールドをビッグエンディアンで格納する
     let high = read_byte(reader, path)?;
     let low = read_byte(reader, path)?;
     Ok(u16::from_be_bytes([high, low]))
 }
 
 fn read_byte(reader: &mut impl Read, path: &Path) -> Result<u8, ImageCollectionError> {
-    // Convert a short read into the same path-aware error used for other I/O.
+    // 読み取り不足も、ほかの I/O と同じパス情報付きエラーへ変換する。
     let mut buffer = [0];
     reader
         .read_exact(&mut buffer)
@@ -323,8 +324,8 @@ fn skip_bytes(
     byte_count: usize,
     path: &Path,
 ) -> Result<(), ImageCollectionError> {
-    // Segment lengths are controlled by the input file, so skip in a fixed-size buffer
-    // instead of allocating an input-sized temporary vector.
+    // セグメント長は入力ファイルで決まる。
+    // そのため入力サイズの一時ベクタは確保せず、固定サイズのバッファで読み飛ばす
     let mut remaining = byte_count;
     let mut buffer = [0; 1024];
 
@@ -343,15 +344,15 @@ fn skip_bytes(
 }
 
 fn invalid_jpeg(path: &Path, reason: &'static str) -> ImageCollectionError {
-    // Keep construction of validation errors uniform and retain the source path.
+    // 検証エラーの生成方法を統一し、原因となったパスを保持する。
     ImageCollectionError::InvalidJpeg {
         path: path.to_path_buf(),
         reason,
     }
 }
 
-// Unit tests compile only when `cargo test` runs.
-// They cover file selection, natural sorting, JPEG header parsing, and invalid input handling.
+// 単体テストは `cargo test` のときだけコンパイルされる。
+// ファイルの選択、自然順、JPEG ヘッダー解析、不正な入力の処理を確認する。
 #[cfg(test)]
 mod tests {
     use std::{
@@ -424,7 +425,7 @@ mod tests {
     }
 
     impl TestDirectory {
-        /// Creates an isolated directory so parallel tests cannot share files.
+        /// 独立したディレクトリを作成する（並列テストがファイルを共有しないために）
         fn new() -> Self {
             let unique_id = NEXT_TEST_DIRECTORY.fetch_add(1, Ordering::Relaxed);
             let path = std::env::temp_dir().join(format!(
@@ -441,15 +442,15 @@ mod tests {
     }
 
     impl Drop for TestDirectory {
-        /// Removes the temporary fixture directory after each test, including on panic.
+        /// 各テスト後に一時 fixture 用ディレクトリを削除する。panic した場合も同様
         fn drop(&mut self) {
             fs::remove_dir_all(&self.path).unwrap();
         }
     }
 
     fn write_jpeg(path: PathBuf, width: u16, height: u16) {
-        // A SOF0 segment is sufficient for the header reader;
-        // no compressed image data is needed by these focused tests.
+        // ヘッダー読み取りには SOF0 セグメントだけで十分。
+        // この限定的なテストでは、圧縮済みの画像データは不要
         let mut bytes = vec![0xff, 0xd8, 0xff, 0xc0, 0x00, 0x11, 0x08];
         bytes.extend_from_slice(&height.to_be_bytes());
         bytes.extend_from_slice(&width.to_be_bytes());
