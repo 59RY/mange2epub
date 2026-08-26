@@ -1,7 +1,7 @@
 use std::{path::PathBuf, process::ExitCode};
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use epub_core::{BuildError, BuildReport, BuildRequest, build_epub};
+use epub_core::{BuildError, BuildReport, BuildRequest, PublicationMetadata, build_epub};
 
 mod i18n;
 
@@ -95,6 +95,8 @@ fn run(command: Command) -> Result<BuildReport, BuildError> {
         Command::Build(arguments) => build_epub(&BuildRequest {
             image_directory: arguments.image_directory,
             output_path: arguments.output,
+            // 書誌情報の入力オプションを追加するまでは、既存の既定値を明示して渡す
+            metadata: PublicationMetadata::new("Untitled".to_owned()),
         }),
     }
 }

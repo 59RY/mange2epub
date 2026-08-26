@@ -1,5 +1,6 @@
 use epub_core::{
-    BuildError, BuildReport, DocumentError, ImageCollectionError, InvalidJpegReason, PackageError,
+    BuildError, BuildReport, DocumentError, ImageCollectionError, InvalidJpegReason, MetadataError,
+    PackageError,
 };
 use rust_i18n::t;
 
@@ -23,6 +24,7 @@ pub fn build_succeeded(report: &BuildReport, locale: Locale) -> String {
 
 pub fn build_failed(error: &BuildError, locale: Locale) -> String {
     let message = match error {
+        BuildError::InvalidMetadata(error) => metadata_error(*error, locale),
         BuildError::CollectImages(error) => image_error(error, locale),
         BuildError::GenerateDocuments(error) => document_error(error, locale),
         BuildError::WritePackage(error) => package_error(error, locale),
@@ -40,6 +42,27 @@ pub fn build_failed(error: &BuildError, locale: Locale) -> String {
         message = message
     )
     .into_owned()
+}
+
+/// 構造化された書誌情報エラーを、表示ロケールに対応する文言へ変換する
+fn metadata_error(error: MetadataError, locale: Locale) -> String {
+    let key = match error {
+        MetadataError::EmptyTitle => "error.empty_title",
+        MetadataError::EmptyTitleFileAs => "error.empty_title_file_as",
+        MetadataError::EmptyCreatorName => "error.empty_creator_name",
+        MetadataError::EmptyCreatorFileAs => "error.empty_creator_file_as",
+        MetadataError::EmptyCreatorRole => "error.empty_creator_role",
+        MetadataError::EmptyCreatorAlternateScript => "error.empty_creator_alternate_script",
+        MetadataError::EmptyCreatorAlternateScriptLanguage => {
+            "error.empty_creator_alternate_script_language"
+        }
+        MetadataError::EmptyDescription => "error.empty_description",
+        MetadataError::EmptyPublisher => "error.empty_publisher",
+        MetadataError::EmptyLanguage => "error.empty_language",
+        MetadataError::EmptyIdentifier => "error.empty_identifier",
+    };
+
+    t!(key, locale = locale.as_str()).into_owned()
 }
 
 fn image_error(error: &ImageCollectionError, locale: Locale) -> String {
@@ -126,7 +149,7 @@ fn package_error(error: &PackageError, locale: Locale) -> String {
 mod tests {
     use std::path::PathBuf;
 
-    use epub_core::{BuildError, BuildReport, ImageCollectionError};
+    use epub_core::{BuildError, BuildReport, ImageCollectionError, MetadataError};
 
     use super::{Locale, build_failed, build_succeeded};
 
@@ -160,6 +183,20 @@ mod tests {
         assert_eq!(
             build_failed(&error, Locale::En),
             "Error: no JPEG images found in: images"
+        );
+    }
+
+    #[test]
+    fn translates_a_metadata_error_to_both_locales() {
+        let error = BuildError::InvalidMetadata(MetadataError::EmptyTitle);
+
+        assert_eq!(
+            build_failed(&error, Locale::Ja),
+            "エラー: 書籍のタイトルを空にすることはできません"
+        );
+        assert_eq!(
+            build_failed(&error, Locale::En),
+            "Error: book title must not be empty"
         );
     }
 }
