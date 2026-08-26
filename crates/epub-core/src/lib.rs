@@ -3,11 +3,13 @@
 //! This crate deliberately does not know how a user supplied its input. Its public
 //! API models EPUB concepts and will later expose the build operation itself.
 
+mod build;
 mod documents;
 mod images;
 mod package;
 mod pages;
 
+pub use build::{BuildError, BuildReport, BuildRequest, build_epub};
 pub use documents::{
     DocumentError, GeneratedDocuments, MinimalMetadata, PageDocument, generate_documents,
 };
