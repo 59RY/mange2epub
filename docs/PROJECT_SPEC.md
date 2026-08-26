@@ -322,26 +322,29 @@ Synthetic Spread上の右ページ。
 
 ## 8.2 EPUBへのマッピング
 
-基本的には以下へマッピングする。
+ページ配置プロパティは、パッケージ文書のspineにある対応する`itemref`へ
+マッピングする。manifestの`item`には書かない。
+
+基本出力では、以下のように`rendition:`付き表記を使用する。
 
 ```xml
-properties="rendition:page-spread-left"
+<itemref idref="page-0000" properties="rendition:page-spread-left"/>
 ```
 
 ```xml
-properties="rendition:page-spread-right"
+<itemref idref="page-0001" properties="rendition:page-spread-right"/>
 ```
 
 ```xml
-properties="rendition:page-spread-center"
+<itemref idref="page-0002" properties="rendition:page-spread-center"/>
 ```
 
-EPUB 3.3向けの内部表現および基本出力では `rendition:` 付き表記へ統一する。
+EPUB 3.3向けの内部表現および基本出力では、`rendition:` 付き表記へ統一する。
 
 古いReading Systemとの互換性が必要な場合に限り、left/rightについて、
 
 ```xml
-properties="rendition:page-spread-left page-spread-left"
+<itemref idref="page-0000" properties="rendition:page-spread-left page-spread-left"/>
 ```
 
 のような互換出力を可能にする余地を残す。
@@ -707,6 +710,7 @@ EPUB 3.3で必要な、
 を生成する。
 
 日時はEPUB生成時のUTC時刻から生成する。
+値は秒精度の`YYYY-MM-DDThh:mm:ssZ`形式とし、小数秒を含めない。
 
 再現可能ビルドを将来必要とする場合は、明示指定可能にする余地を残す。
 

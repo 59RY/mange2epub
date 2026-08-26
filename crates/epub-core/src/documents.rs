@@ -195,7 +195,6 @@ fn generate_package_opf(
     for index in 0..page_count {
         let page_id = page_id(index);
         let page_path = page_path(index);
-        let placement = placement_property(default_page_placement(index));
         empty(
             &mut writer,
             "item",
@@ -203,7 +202,6 @@ fn generate_package_opf(
                 ("id", page_id.as_str()),
                 ("href", page_path.as_str()),
                 ("media-type", "application/xhtml+xml"),
-                ("properties", placement),
             ],
         )?;
 
@@ -241,7 +239,12 @@ fn generate_package_opf(
     )?;
     for index in 0..page_count {
         let page_id = page_id(index);
-        empty(&mut writer, "itemref", &[("idref", page_id.as_str())])?;
+        let placement = placement_property(default_page_placement(index));
+        empty(
+            &mut writer,
+            "itemref",
+            &[("idref", page_id.as_str()), ("properties", placement)],
+        )?;
     }
     end(&mut writer, "spine")?;
     end(&mut writer, "package")?;
@@ -390,6 +393,7 @@ fn image_path(index: usize) -> String {
 
 fn placement_property(placement: PagePlacement) -> &'static str {
     // Keep EPUB vocabulary at the output boundary while core code uses an enum.
+    // These values belong to the package document's spine `itemref` elements.
     match placement {
         PagePlacement::Left => "rendition:page-spread-left",
         PagePlacement::Right => "rendition:page-spread-right",
@@ -506,17 +510,24 @@ mod tests {
                 .contains("page-progression-direction=\"rtl\"")
         );
         assert!(documents.package_opf.contains("properties=\"cover-image\""));
+        assert!(documents.package_opf.contains(
+            "<itemref idref=\"page-0000\" properties=\"rendition:page-spread-center\"/>"
+        ));
         assert!(
-            documents
-                .package_opf
-                .contains("rendition:page-spread-center")
+            documents.package_opf.contains(
+                "<itemref idref=\"page-0001\" properties=\"rendition:page-spread-right\"/>"
+            )
+        );
+        assert!(
+            documents.package_opf.contains(
+                "<itemref idref=\"page-0002\" properties=\"rendition:page-spread-left\"/>"
+            )
         );
         assert!(
             documents
                 .package_opf
-                .contains("rendition:page-spread-right")
+                .contains("<item id=\"page-0000\" href=\"pages/page-0000.xhtml\" media-type=\"application/xhtml+xml\"/>")
         );
-        assert!(documents.package_opf.contains("rendition:page-spread-left"));
         assert!(documents.navigation_xhtml.contains("epub:type=\"toc\""));
         assert_eq!(documents.pages.len(), 3);
         assert!(
