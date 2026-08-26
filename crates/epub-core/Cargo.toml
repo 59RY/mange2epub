@@ -8,3 +8,6 @@ publish = false
 
 [lib]
 name = "epub_core"
+
+[dependencies]
+quick-xml = "0.39"
