@@ -518,7 +518,7 @@ EPUB内部の画像ファイル名およびXHTMLファイル名は、入力元�
 例：
 
 ```xml
-<dc:title id="title">同人誌のタイトル</dc:title>
+<dc:title id="title">書籍のタイトル</dc:title>
 ```
 
 ## 12.2 タイトル読み
@@ -920,8 +920,8 @@ GUI化した場合も、GUIの内部データモデルとYAMLを極力共通化�
 version: 1
 
 book:
-  title: "同人誌のタイトル"
-  title_file_as: "ドウシンシノタイトル"
+  title: "書籍のタイトル"
+  title_file_as: "ショセキノタイトル"
 
   language: "ja"
 
@@ -1111,7 +1111,7 @@ images:
 ## 21.1 EPUB生成
 
 ```bash
-manga2epub build ./images --output ./book.epub --title "同人誌のタイトル"
+manga2epub build ./images --output ./book.epub --title "書籍のタイトル"
 ```
 
 `<image_directory>`、`--output`、`--title` を指定して EPUB を生成する。
@@ -1125,8 +1125,8 @@ manga2epub build ./images --output ./book.epub --title "同人誌のタイトル
 ```bash
 manga2epub build ./images \\
   --output ./book.epub \\
-  --title "同人誌のタイトル" \\
-  --title-file-as "ドウジンシノタイトル" \\
+  --title "書籍のタイトル" \\
+  --title-file-as "ショセキノタイトル" \\
   --creator "著者名" \\
   --creator-file-as "チョシャメイ" \\
   --creator-role aut \\
@@ -1185,7 +1185,7 @@ manga2epub inspect ./book.epub
 で、以下のような情報を表示できると便利である。
 
 ```text
-Title: 同人誌のタイトル
+Title: 書籍のタイトル
 Creator: 祐天寺
 Pages: 52
 Direction: RTL
