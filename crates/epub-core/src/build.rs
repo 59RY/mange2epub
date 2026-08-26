@@ -122,7 +122,7 @@ mod tests {
     static NEXT_TEST_DIRECTORY: AtomicUsize = AtomicUsize::new(0);
 
     #[test]
-    // identifierを省略すると、ビルド処理がUUIDを生成してEPUBへ出力する
+    // identifier を省略すると、ビルド処理が UUID を生成して EPUB へ出力する
     fn builds_an_epub_with_generated_identifier() {
         let directory = TestDirectory::new();
         write_jpeg(directory.path().join("page-1.jpg"));
@@ -145,7 +145,7 @@ mod tests {
     }
 
     #[test]
-    // 指定されたidentifierは変更せず、Primary Identifierとして出力する
+    // 指定された identifier は変更せず、Primary Identifier として出力する
     fn builds_an_epub_with_the_specified_identifier() {
         let directory = TestDirectory::new();
         write_jpeg(directory.path().join("page-1.jpg"));
@@ -184,7 +184,7 @@ mod tests {
     }
 
     fn package_document(path: &Path) -> String {
-        // Reading Systemと同じように、アーカイブから最終的な .opf を読み取る
+        // Reading System と同じように、アーカイブから最終的な .opf を読み取る
         let file = fs::File::open(path).unwrap();
         let mut archive = ZipArchive::new(file).unwrap();
         let mut package = String::new();
@@ -207,7 +207,7 @@ mod tests {
     }
 
     fn assert_modified_timestamp(package: &str) {
-        // 必須形式は、秒単位・固定長のUTC日時
+        // 必須形式は、秒単位・固定長の UTC 日時
         let marker = "<meta property=\"dcterms:modified\">";
         let start = package.find(marker).unwrap() + marker.len();
         let end = package[start..].find('<').unwrap() + start;
@@ -219,7 +219,7 @@ mod tests {
     }
 
     fn write_jpeg(path: PathBuf) {
-        // SOF0セグメントだけで、コアの入力処理が画像サイズを取得できる
+        // SOF0 セグメントだけで、コアの入力処理が画像サイズを取得できる
         let bytes = [
             0xff, 0xd8, 0xff, 0xc0, 0x00, 0x11, 0x08, 0x06, 0xdf, 0x04, 0xb0, 0x03, 0x01, 0x11,
             0x00, 0x02, 0x11, 0x00, 0x03, 0x11, 0x00, 0xff, 0xd9,

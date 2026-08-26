@@ -115,7 +115,7 @@ struct BuildArguments {
 }
 
 impl BuildArguments {
-    /// CLI引数を、利用者が指定する書誌情報とビルド処理の入力へ変換する
+    /// CLI 引数を、利用者が指定する書誌情報とビルド処理の入力へ変換する
     fn into_build_request(self) -> BuildRequest {
         let alternate_script = self
             .creator_alternate_script
@@ -216,7 +216,7 @@ mod tests {
     }
 
     #[test]
-    // EPUBの必須メタデータであるタイトルを、CLIでも必須の入力にする
+    // EPUB の必須メタデータであるタイトルを、CLI でも必須の入力にする
     fn rejects_the_build_command_without_a_title() {
         let result =
             Cli::try_parse_from(["manga2epub", "build", "./images", "--output", "./book.epub"]);
@@ -359,7 +359,7 @@ mod tests {
         assert_eq!(resolve_locale(None, None), Locale::En);
     }
 
-    /// ビルド実行テスト用の、必須項目だけを持つCLI引数を作る
+    /// ビルド実行テスト用の、必須項目だけを持つ CLI 引数を作る
     fn build_arguments(image_directory: PathBuf, output: PathBuf) -> BuildArguments {
         BuildArguments {
             image_directory,
@@ -379,7 +379,7 @@ mod tests {
     }
 
     fn write_jpeg(path: PathBuf) {
-        // SOF0セグメントだけで、コアの入力処理が画像サイズを取得できる
+        // SOF0 セグメントだけで、コアの入力処理が画像サイズを取得できる
         let bytes = [
             0xff, 0xd8, 0xff, 0xc0, 0x00, 0x11, 0x08, 0x06, 0xdf, 0x04, 0xb0, 0x03, 0x01, 0x11,
             0x00, 0x02, 0x11, 0x00, 0x03, 0x11, 0x00, 0xff, 0xd9,

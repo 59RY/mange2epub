@@ -2,8 +2,8 @@ use std::{error::Error, fmt};
 
 /// 利用者が指定する書誌情報
 ///
-/// CLIや将来の設定ファイルはこの構造を作る。
-/// UUIDや更新日時など、EPUB生成時に決まる値はここに含めない。
+/// CLI や将来の設定ファイルはこの構造を作る。
+/// UUID や更新日時など、EPUB 生成時に決まる値はここに含めない。
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PublicationMetadata {
     pub title: String,
@@ -63,7 +63,7 @@ impl PublicationMetadata {
         }
     }
 
-    /// EPUBへ出力する前に、指定された値が空でないことを確認する
+    /// EPUB へ出力する前に、指定された値が空でないことを確認する
     ///
     /// 値の前後の空白は検査だけに使用し、値そのものは変更しない。
     pub fn validate(&self) -> Result<(), MetadataError> {
@@ -238,21 +238,21 @@ mod tests {
         metadata
     }
 
-    /// identifierが空白だけである書誌情報を作る
+    /// identifier が空白だけである書誌情報を作る
     fn metadata_with_empty_identifier() -> PublicationMetadata {
         let mut metadata = PublicationMetadata::new("書籍のタイトル".to_owned());
         metadata.identifier = Some(" ".to_owned());
         metadata
     }
 
-    /// Descriptionが空白だけである書誌情報を作る
+    /// Description が空白だけである書誌情報を作る
     fn metadata_with_empty_description() -> PublicationMetadata {
         let mut metadata = PublicationMetadata::new("書籍のタイトル".to_owned());
         metadata.description = Some("  ".to_owned());
         metadata
     }
 
-    /// Publisherが空白だけである書誌情報を作る
+    /// Publisher が空白だけである書誌情報を作る
     fn metadata_with_empty_publisher() -> PublicationMetadata {
         let mut metadata = PublicationMetadata::new("書籍のタイトル".to_owned());
         metadata.publisher = Some("  ".to_owned());

@@ -117,7 +117,7 @@ impl Error for ImageCollectionError {
     }
 }
 
-/// `directory` 直下のJPEGファイルを、決定的な自然順で収集する
+/// `directory` 直下の JPEG ファイルを、決定的な自然順で収集する
 ///
 /// - ASCII の大文字・小文字を区別せず、`.jpg` と `.jpeg` だけを対象にする
 /// - JPEG ヘッダーは画像サイズを取得できる位置までだけ読み取る
@@ -305,9 +305,9 @@ fn read_jpeg_dimensions(path: &Path) -> Result<ImageDimensions, ImageCollectionE
 }
 
 fn next_marker(reader: &mut impl Read, path: &Path) -> Result<u8, ImageCollectionError> {
-    // JPEGマーカーは0xFFで始まる。
-    // - 連続する0xFFは埋め込み用バイト。
-    //   0xFF00はバイトスタッフィングのためマーカーではない
+    // JPEG マーカーは 0xFF で始まる。
+    // - 連続する 0xFF は埋め込み用バイト。
+    //   0xFF00 はバイトスタッフィングのためマーカーではない
     loop {
         if read_byte(reader, path)? != 0xff {
             continue;

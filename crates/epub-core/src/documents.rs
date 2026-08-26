@@ -30,9 +30,9 @@ pub struct MinimalMetadata {
 }
 
 impl MinimalMetadata {
-    /// 利用者が指定した書誌情報と、ビルド時に決まる値からEPUB出力用の値を作る
+    /// 利用者が指定した書誌情報と、ビルド時に決まる値から EPUB 出力用の値を作る
     ///
-    /// `identifier` には、利用者の指定値または自動生成したUUIDを呼び出し側で渡す。
+    /// `identifier` には、利用者の指定値または自動生成した UUID を呼び出し側で渡す。
     pub fn from_publication(
         metadata: &PublicationMetadata,
         identifier: String,
@@ -294,7 +294,7 @@ fn generate_package_opf(
     into_string(writer)
 }
 
-/// 著者と、その著者を対象にしたrefinement要素を出力する
+/// 著者と、その著者を対象にした refinement 要素を出力する
 fn write_creator_metadata(
     writer: &mut Writer<Vec<u8>>,
     creator: Option<&CreatorMetadata>,
@@ -332,7 +332,7 @@ fn write_creator_metadata(
     Ok(())
 }
 
-/// 指定された値を、既存要素を対象とするrefinementとして出力する
+/// 指定された値を、既存要素を対象とする refinement として出力する
 fn write_optional_refinement(
     writer: &mut Writer<Vec<u8>>,
     refines: &str,
@@ -351,7 +351,7 @@ fn write_optional_refinement(
     Ok(())
 }
 
-/// 指定された値を任意のDublin Core要素として出力する
+/// 指定された値を任意の Dublin Core 要素として出力する
 fn write_optional_dc_element(
     writer: &mut Writer<Vec<u8>>,
     name: &str,
@@ -462,7 +462,7 @@ fn generate_page_document(
 }
 
 fn page_css() -> String {
-    // このCSSの主旨:
+    // この CSS の主旨:
     // ブラウザの既定値を取り除き、画像を viewport 全体に表示する
     [
         "html, body {",
@@ -527,7 +527,7 @@ fn write_declaration(writer: &mut Writer<Vec<u8>>) -> Result<(), DocumentError> 
 }
 
 fn write_doctype(writer: &mut Writer<Vec<u8>>) -> Result<(), DocumentError> {
-    // HTMLのdoctypeを使用する
+    // HTML の doctype を使用する
     write_event(writer, Event::DocType(BytesText::new("html")))
 }
 
@@ -563,7 +563,7 @@ fn text_element(
     attributes: &[(&str, &str)],
     text: &str,
 ) -> Result<(), DocumentError> {
-    // テキストノードも `quick-xml` を通すことで、XMLエスケープを任せる
+    // テキストノードも `quick-xml` を通すことで、XML エスケープを任せる
     start(writer, name, attributes)?;
     write_event(writer, Event::Text(BytesText::new(text)))?;
     end(writer, name)
@@ -668,7 +668,7 @@ mod tests {
     }
 
     #[test]
-    // 指定した書誌情報を、OPFの基本要素とrefinement要素へ分けて出力する
+    // 指定した書誌情報を、OPF の基本要素と refinement 要素へ分けて出力する
     fn generates_requested_publication_metadata() {
         let metadata = MinimalMetadata::from_publication(
             &publication_metadata(),
