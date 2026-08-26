@@ -28,6 +28,7 @@ pub enum BuildError {
     CollectImages(ImageCollectionError),
     GenerateDocuments(DocumentError),
     WritePackage(PackageError),
+    TruncateModifiedTime(time::error::ComponentRange),
     FormatModifiedTime(time::error::Format),
 }
 
@@ -37,6 +38,9 @@ impl fmt::Display for BuildError {
             Self::CollectImages(error) => write!(formatter, "{error}"),
             Self::GenerateDocuments(error) => write!(formatter, "{error}"),
             Self::WritePackage(error) => write!(formatter, "{error}"),
+            Self::TruncateModifiedTime(_) => {
+                write!(formatter, "could not truncate EPUB modified timestamp")
+            }
             Self::FormatModifiedTime(_) => {
                 write!(formatter, "could not format EPUB modified timestamp")
             }
@@ -50,6 +54,7 @@ impl Error for BuildError {
             Self::CollectImages(error) => Some(error),
             Self::GenerateDocuments(error) => Some(error),
             Self::WritePackage(error) => Some(error),
+            Self::TruncateModifiedTime(error) => Some(error),
             Self::FormatModifiedTime(error) => Some(error),
         }
     }
@@ -73,9 +78,7 @@ pub fn build_epub(request: &BuildRequest) -> Result<BuildReport, BuildError> {
 fn default_metadata() -> Result<MinimalMetadata, BuildError> {
     // The first usable build has no metadata input yet.
     // These values satisfy EPUB's required metadata until a later input layer replaces them.
-    let modified = OffsetDateTime::now_utc()
-        .format(&Rfc3339)
-        .map_err(BuildError::FormatModifiedTime)?;
+    let modified = format_modified_time(OffsetDateTime::now_utc())?;
 
     Ok(MinimalMetadata {
         title: "Untitled".to_owned(),
@@ -83,6 +86,15 @@ fn default_metadata() -> Result<MinimalMetadata, BuildError> {
         language: "ja".to_owned(),
         modified,
     })
+}
+
+fn format_modified_time(timestamp: OffsetDateTime) -> Result<String, BuildError> {
+    // EPUB requires a UTC timestamp with second precision, so discard subsecond data first.
+    timestamp
+        .replace_nanosecond(0)
+        .map_err(BuildError::TruncateModifiedTime)?
+        .format(&Rfc3339)
+        .map_err(BuildError::FormatModifiedTime)
 }
 
 // Unit tests run the complete core workflow without involving command-line argument parsing.
@@ -119,7 +131,7 @@ mod tests {
         let package = package_document(&output);
         assert!(package.contains("<dc:title>Untitled</dc:title>"));
         assert!(package.contains("<dc:language>ja</dc:language>"));
-        assert!(package.contains("property=\"dcterms:modified\""));
+        assert_modified_timestamp(&package);
         assert_uuid_identifier(&package);
     }
 
@@ -144,6 +156,18 @@ mod tests {
         let uuid = identifier.strip_prefix("urn:uuid:").unwrap();
 
         assert!(Uuid::parse_str(uuid).is_ok());
+    }
+
+    fn assert_modified_timestamp(package: &str) {
+        // The required format is fixed-width UTC time with no fractional seconds.
+        let marker = "<meta property=\"dcterms:modified\">";
+        let start = package.find(marker).unwrap() + marker.len();
+        let end = package[start..].find('<').unwrap() + start;
+        let modified = &package[start..end];
+
+        assert_eq!(modified.len(), 20);
+        assert!(modified.ends_with('Z'));
+        assert!(!modified.contains('.'));
     }
 
     fn write_jpeg(path: PathBuf) {
