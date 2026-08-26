@@ -32,6 +32,7 @@ pub enum ImageCollectionError {
 }
 
 impl fmt::Display for ImageCollectionError {
+    /// Presents each error in a form that the CLI can show directly to a user.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::ReadDirectory { path, .. } => {
@@ -66,6 +67,7 @@ impl fmt::Display for ImageCollectionError {
 }
 
 impl Error for ImageCollectionError {
+    /// Preserves the operating-system error when one caused this higher-level error.
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::ReadDirectory { source, .. }
@@ -118,6 +120,8 @@ pub fn collect_jpeg_images(directory: &Path) -> Result<Vec<SourceImage>, ImageCo
 }
 
 fn has_jpeg_extension(path: &Path) -> bool {
+    // File extensions are a quick filter;
+    // `read_jpeg_dimensions` still validates the contents before the image is accepted.
     path.extension()
         .and_then(|extension| extension.to_str())
         .is_some_and(|extension| {
@@ -126,6 +130,8 @@ fn has_jpeg_extension(path: &Path) -> bool {
 }
 
 fn natural_path_compare(left: &Path, right: &Path) -> Ordering {
+    // The filename determines the user-visible order.
+    // The complete path breaks otherwise equal filenames deterministically.
     let left_name = left.file_name().unwrap_or_default().to_string_lossy();
     let right_name = right.file_name().unwrap_or_default().to_string_lossy();
 
@@ -133,6 +139,8 @@ fn natural_path_compare(left: &Path, right: &Path) -> Ordering {
 }
 
 fn natural_compare(left: &str, right: &str) -> Ordering {
+    // Compare ASCII digit runs as numbers without parsing an integer.
+    // This avoids overflow for unusually long page numbers.
     let left = left.as_bytes();
     let right = right.as_bytes();
     let (mut left_index, mut right_index) = (0, 0);
@@ -165,6 +173,8 @@ fn natural_compare(left: &str, right: &str) -> Ordering {
 }
 
 fn digit_run_end(value: &[u8], start: usize) -> usize {
+    // `start` always points at a digit, so the returned index is after at least 1 byte
+    // and can safely be used as a slice boundary.
     value[start..]
         .iter()
         .position(|byte| !byte.is_ascii_digit())
@@ -172,6 +182,8 @@ fn digit_run_end(value: &[u8], start: usize) -> usize {
 }
 
 fn compare_digit_runs(left: &[u8], right: &[u8]) -> Ordering {
+    // Numeric strings compare by their significant digit count first.
+    // If their numeric values match, fewer leading zeroes sorts first.
     let left_significant = trim_leading_zeroes(left);
     let right_significant = trim_leading_zeroes(right);
 
@@ -183,6 +195,8 @@ fn compare_digit_runs(left: &[u8], right: &[u8]) -> Ordering {
 }
 
 fn trim_leading_zeroes(value: &[u8]) -> &[u8] {
+    // Keep one zero for an all-zero run
+    // so its numeric representation is never an empty slice.
     let first_significant = value
         .iter()
         .position(|byte| *byte != b'0')
@@ -196,6 +210,9 @@ fn trim_leading_zeroes(value: &[u8]) -> &[u8] {
 }
 
 fn read_jpeg_dimensions(path: &Path) -> Result<ImageDimensions, ImageCollectionError> {
+    // JPEG records width and height in a Start Of Frame segment.
+    // Reading only up to that segment preserves the input bytes
+    // and avoids allocating pixel data.
     let file = File::open(path).map_err(|source| ImageCollectionError::ReadImage {
         path: path.to_path_buf(),
         source,
@@ -255,6 +272,8 @@ fn read_jpeg_dimensions(path: &Path) -> Result<ImageDimensions, ImageCollectionE
 }
 
 fn next_marker(reader: &mut impl Read, path: &Path) -> Result<u8, ImageCollectionError> {
+    // JPEG markers begin with 0xFF. Repeated 0xFF bytes are fill bytes,
+    // while 0xFF00 is byte-stuffing and not a marker.
     loop {
         if read_byte(reader, path)? != 0xff {
             continue;
@@ -272,6 +291,8 @@ fn next_marker(reader: &mut impl Read, path: &Path) -> Result<u8, ImageCollectio
 }
 
 fn is_start_of_frame(marker: u8) -> bool {
+    // JPEG defines several SOF variants. They all store dimensions in the same initial fields,
+    // while the excluded marker values have other meanings.
     matches!(
         marker,
         0xc0..=0xc3 | 0xc5..=0xc7 | 0xc9..=0xcb | 0xcd..=0xcf
@@ -279,12 +300,14 @@ fn is_start_of_frame(marker: u8) -> bool {
 }
 
 fn read_u16(reader: &mut impl Read, path: &Path) -> Result<u16, ImageCollectionError> {
+    // JPEG stores multi-byte fields in big-endian byte order.
     let high = read_byte(reader, path)?;
     let low = read_byte(reader, path)?;
     Ok(u16::from_be_bytes([high, low]))
 }
 
 fn read_byte(reader: &mut impl Read, path: &Path) -> Result<u8, ImageCollectionError> {
+    // Convert a short read into the same path-aware error used for other I/O.
     let mut buffer = [0];
     reader
         .read_exact(&mut buffer)
@@ -300,6 +323,8 @@ fn skip_bytes(
     byte_count: usize,
     path: &Path,
 ) -> Result<(), ImageCollectionError> {
+    // Segment lengths are controlled by the input file, so skip in a fixed-size buffer
+    // instead of allocating an input-sized temporary vector.
     let mut remaining = byte_count;
     let mut buffer = [0; 1024];
 
@@ -318,12 +343,15 @@ fn skip_bytes(
 }
 
 fn invalid_jpeg(path: &Path, reason: &'static str) -> ImageCollectionError {
+    // Keep construction of validation errors uniform and retain the source path.
     ImageCollectionError::InvalidJpeg {
         path: path.to_path_buf(),
         reason,
     }
 }
 
+// Unit tests compile only when `cargo test` runs.
+// They cover file selection, natural sorting, JPEG header parsing, and invalid input handling.
 #[cfg(test)]
 mod tests {
     use std::{
@@ -396,6 +424,7 @@ mod tests {
     }
 
     impl TestDirectory {
+        /// Creates an isolated directory so parallel tests cannot share files.
         fn new() -> Self {
             let unique_id = NEXT_TEST_DIRECTORY.fetch_add(1, Ordering::Relaxed);
             let path = std::env::temp_dir().join(format!(
@@ -412,12 +441,15 @@ mod tests {
     }
 
     impl Drop for TestDirectory {
+        /// Removes the temporary fixture directory after each test, including on panic.
         fn drop(&mut self) {
             fs::remove_dir_all(&self.path).unwrap();
         }
     }
 
     fn write_jpeg(path: PathBuf, width: u16, height: u16) {
+        // A SOF0 segment is sufficient for the header reader;
+        // no compressed image data is needed by these focused tests.
         let mut bytes = vec![0xff, 0xd8, 0xff, 0xc0, 0x00, 0x11, 0x08];
         bytes.extend_from_slice(&height.to_be_bytes());
         bytes.extend_from_slice(&width.to_be_bytes());
