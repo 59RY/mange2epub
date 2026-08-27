@@ -55,14 +55,14 @@ impl Locale {
 /// 現在アプリケーションが対応しているコマンド
 #[derive(Debug, Subcommand)]
 enum Command {
-    /// JPEG 画像のディレクトリから EPUB を生成する
+    /// 対応する画像のディレクトリから EPUB を生成する
     Build(BuildArguments),
 }
 
 /// `build` コマンドが受け取る引数
 #[derive(Args, Debug)]
 struct BuildArguments {
-    /// ページ画像の JPEG が入ったディレクトリ
+    /// ページ画像が入ったディレクトリ
     image_directory: PathBuf,
 
     /// 生成する EPUB ファイルのパス

@@ -1,6 +1,6 @@
 use epub_core::{
-    BuildError, BuildReport, DocumentError, ImageCollectionError, InvalidJpegReason, MetadataError,
-    PackageError,
+    BuildError, BuildReport, DocumentError, ImageCollectionError, InvalidImageReason,
+    MetadataError, PackageError,
 };
 use rust_i18n::t;
 
@@ -81,11 +81,11 @@ fn image_error(error: &ImageCollectionError, locale: Locale) -> String {
         ImageCollectionError::ReadImage { path, .. } => {
             t!("error.read_image", locale = locale, path = path.display())
         }
-        ImageCollectionError::InvalidJpeg { path, reason } => t!(
-            "error.invalid_jpeg",
+        ImageCollectionError::InvalidImage { path, reason } => t!(
+            "error.invalid_image",
             locale = locale,
             path = path.display(),
-            reason = invalid_jpeg_reason(*reason, locale)
+            reason = invalid_image_reason(*reason, locale)
         ),
         ImageCollectionError::NoImages { directory } => t!(
             "error.no_images",
@@ -96,14 +96,12 @@ fn image_error(error: &ImageCollectionError, locale: Locale) -> String {
     .into_owned()
 }
 
-fn invalid_jpeg_reason(reason: InvalidJpegReason, locale: &str) -> String {
+/// 画像形式に依存しない検証エラーを、表示ロケールに対応する文言へ変換する
+fn invalid_image_reason(reason: InvalidImageReason, locale: &str) -> String {
     let key = match reason {
-        InvalidJpegReason::MissingStartOfImage => "jpeg.missing_start_of_image",
-        InvalidJpegReason::ShortStartOfFrame => "jpeg.short_start_of_frame",
-        InvalidJpegReason::ZeroDimensions => "jpeg.zero_dimensions",
-        InvalidJpegReason::MissingStartOfFrame => "jpeg.missing_start_of_frame",
-        InvalidJpegReason::StartOfFrameAfterImageData => "jpeg.start_of_frame_after_data",
-        InvalidJpegReason::ShortSegment => "jpeg.short_segment",
+        InvalidImageReason::InvalidHeader => "image.invalid_header",
+        InvalidImageReason::InvalidDimensions => "image.invalid_dimensions",
+        InvalidImageReason::InvalidStructure => "image.invalid_structure",
     };
     t!(key, locale = locale).into_owned()
 }
@@ -178,11 +176,11 @@ mod tests {
 
         assert_eq!(
             build_failed(&error, Locale::Ja),
-            "エラー: JPEG 画像が見つかりません: images"
+            "エラー: 対応画像が見つかりません: images"
         );
         assert_eq!(
             build_failed(&error, Locale::En),
-            "Error: no JPEG images found in: images"
+            "Error: no supported images found in: images"
         );
     }
 

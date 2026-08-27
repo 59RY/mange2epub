@@ -7,46 +7,65 @@ use std::{
     path::{Path, PathBuf},
 };
 
-/// JPEG ファイル(Raw)を読み取ったピクセル寸法
+/// EPUB へ収録できるラスター画像の形式
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ImageFormat {
+    Jpeg,
+    Png,
+}
+
+impl ImageFormat {
+    /// EPUB 内部で使用する正規化済みの拡張子を返す
+    pub const fn extension(self) -> &'static str {
+        match self {
+            Self::Jpeg => "jpg",
+            Self::Png => "png",
+        }
+    }
+    /// OPF manifest に出力する MIME type を返す
+    pub const fn media_type(self) -> &'static str {
+        match self {
+            Self::Jpeg => "image/jpeg",
+            Self::Png => "image/png",
+        }
+    }
+}
+
+/// 画像ファイルから読み取ったピクセル寸法
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ImageDimensions {
     pub width: u32,
     pub height: u32,
 }
 
-/// EPUB へ収録する入力 JPEG
+/// EPUB へ収録する入力画像
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SourceImage {
     pub path: PathBuf,
+    pub format: ImageFormat,
     pub dimensions: ImageDimensions,
 }
 
-/// JPEG の構造を検証できなかった理由
+/// 画像の構造を検証できなかった理由
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum InvalidJpegReason {
-    MissingStartOfImage,
-    ShortStartOfFrame,
-    ZeroDimensions,
-    MissingStartOfFrame,
-    StartOfFrameAfterImageData,
-    ShortSegment,
+pub enum InvalidImageReason {
+    InvalidHeader,
+    InvalidDimensions,
+    InvalidStructure,
 }
 
-impl fmt::Display for InvalidJpegReason {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let message = match self {
-            Self::MissingStartOfImage => "missing start-of-image marker",
-            Self::ShortStartOfFrame => "start-of-frame segment is too short",
-            Self::ZeroDimensions => "image dimensions must be greater than zero",
-            Self::MissingStartOfFrame => "missing start-of-frame marker",
-            Self::StartOfFrameAfterImageData => "start-of-frame marker appears after image data",
-            Self::ShortSegment => "segment length is smaller than its header",
-        };
-        formatter.write_str(message)
+impl fmt::Display for InvalidImageReason {
+    // ロケールを扱わない呼び出し元向けに、英語の標準表現を返す
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::InvalidHeader => "invalid image header",
+            Self::InvalidDimensions => "image dimensions must be greater than zero",
+            Self::InvalidStructure => "invalid image structure",
+        })
     }
 }
 
-/// 入力 JPEG ファイルの収集時に発生しうるエラー
+/// 入力画像ファイルの収集時に発生しうるエラー
 #[derive(Debug)]
 pub enum ImageCollectionError {
     ReadDirectory {
@@ -61,9 +80,9 @@ pub enum ImageCollectionError {
         path: PathBuf,
         source: io::Error,
     },
-    InvalidJpeg {
+    InvalidImage {
         path: PathBuf,
-        reason: InvalidJpegReason,
+        reason: InvalidImageReason,
     },
     NoImages {
         directory: PathBuf,
@@ -71,277 +90,209 @@ pub enum ImageCollectionError {
 }
 
 impl fmt::Display for ImageCollectionError {
-    /// ロケールを扱わない呼び出し元向けに、英語の標準表現を返す
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+    // 画像収集に失敗した経路を、開発者向けの英語メッセージへ整形する
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::ReadDirectory { path, .. } => {
-                write!(
-                    formatter,
-                    "could not read image directory: {}",
-                    path.display()
-                )
+                write!(f, "could not read image directory: {}", path.display())
             }
             Self::ReadDirectoryEntry { path, .. } => {
-                write!(
-                    formatter,
-                    "could not read a directory entry in: {}",
-                    path.display()
-                )
+                write!(f, "could not read a directory entry in: {}", path.display())
             }
-            Self::ReadImage { path, .. } => {
-                write!(formatter, "could not read image: {}", path.display())
-            }
-            Self::InvalidJpeg { path, reason } => {
-                write!(formatter, "invalid JPEG image {}: {reason}", path.display())
+            Self::ReadImage { path, .. } => write!(f, "could not read image: {}", path.display()),
+            Self::InvalidImage { path, reason } => {
+                write!(f, "invalid image {}: {reason}", path.display())
             }
             Self::NoImages { directory } => {
-                write!(
-                    formatter,
-                    "no JPEG images found in: {}",
-                    directory.display()
-                )
+                write!(f, "no supported images found in: {}", directory.display())
             }
         }
     }
 }
 
 impl Error for ImageCollectionError {
-    /// この高水準のエラーの原因となった OS のエラーを保持する
+    // OS の入出力エラーだけを原因として公開し、検証エラーは独立したエラーとして扱う
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::ReadDirectory { source, .. }
             | Self::ReadDirectoryEntry { source, .. }
             | Self::ReadImage { source, .. } => Some(source),
-            Self::InvalidJpeg { .. } | Self::NoImages { .. } => None,
+            Self::InvalidImage { .. } | Self::NoImages { .. } => None,
         }
     }
 }
 
-/// `directory` 直下の JPEG ファイルを、決定的な自然順で収集する
+/// `directory` 直下の対応画像を、決定的な自然順で収集する
 ///
-/// - ASCII の大文字・小文字を区別せず、`.jpg` と `.jpeg` だけを対象にする
-/// - JPEG ヘッダーは画像サイズを取得できる位置までだけ読み取る
-pub fn collect_jpeg_images(directory: &Path) -> Result<Vec<SourceImage>, ImageCollectionError> {
+/// 拡張子の大文字小文字を区別せず、JPEG と PNG を対象にする
+pub fn collect_images(directory: &Path) -> Result<Vec<SourceImage>, ImageCollectionError> {
     let entries =
         fs::read_dir(directory).map_err(|source| ImageCollectionError::ReadDirectory {
             path: directory.to_path_buf(),
             source,
         })?;
-
-    let mut paths = Vec::new();
+    let mut images = Vec::new();
     for entry in entries {
-        let entry = entry.map_err(|source| ImageCollectionError::ReadDirectoryEntry {
-            path: directory.to_path_buf(),
-            source,
-        })?;
-        let path = entry.path();
-
-        if path.is_file() && has_jpeg_extension(&path) {
-            paths.push(path);
+        let path = entry
+            .map_err(|source| ImageCollectionError::ReadDirectoryEntry {
+                path: directory.to_path_buf(),
+                source,
+            })?
+            .path();
+        if path.is_file() {
+            if let Some(format) = image_format_from_extension(&path) {
+                images.push((path, format));
+            }
         }
     }
-
-    paths.sort_by(|left, right| natural_path_compare(left, right));
-
-    if paths.is_empty() {
+    images.sort_by(|(left, _), (right, _)| natural_path_compare(left, right));
+    if images.is_empty() {
         return Err(ImageCollectionError::NoImages {
             directory: directory.to_path_buf(),
         });
     }
-
-    paths
+    images
         .into_iter()
-        .map(|path| {
-            let dimensions = read_jpeg_dimensions(&path)?;
-            Ok(SourceImage { path, dimensions })
+        .map(|(path, format)| {
+            Ok(SourceImage {
+                dimensions: read_image_dimensions(&path, format)?,
+                path,
+                format,
+            })
         })
         .collect()
 }
 
-fn has_jpeg_extension(path: &Path) -> bool {
-    // 拡張子は高速な絞り込みに使用する。
-    // 画像として受け入れる前に、`read_jpeg_dimensions` が内容も検証する
-    path.extension()
-        .and_then(|extension| extension.to_str())
-        .is_some_and(|extension| {
-            extension.eq_ignore_ascii_case("jpg") || extension.eq_ignore_ascii_case("jpeg")
-        })
+/// 拡張子から対応する画像形式を判定する
+fn image_format_from_extension(path: &Path) -> Option<ImageFormat> {
+    let extension = path.extension()?.to_str()?;
+    if extension.eq_ignore_ascii_case("jpg") || extension.eq_ignore_ascii_case("jpeg") {
+        Some(ImageFormat::Jpeg)
+    } else if extension.eq_ignore_ascii_case("png") {
+        Some(ImageFormat::Png)
+    } else {
+        None
+    }
 }
 
-fn natural_path_compare(left: &Path, right: &Path) -> Ordering {
-    // 利用者に見える順序はファイル名で決める。
-    // 同名の場合は、完全なパスで決定的に順序を決める
-    let left_name = left.file_name().unwrap_or_default().to_string_lossy();
-    let right_name = right.file_name().unwrap_or_default().to_string_lossy();
-
-    natural_compare(&left_name, &right_name).then_with(|| left.cmp(right))
+/// 画像形式に応じて幅と高さだけを読み取る
+fn read_image_dimensions(
+    path: &Path,
+    format: ImageFormat,
+) -> Result<ImageDimensions, ImageCollectionError> {
+    match format {
+        ImageFormat::Jpeg => read_jpeg_dimensions(path),
+        ImageFormat::Png => read_png_dimensions(path),
+    }
 }
 
-fn natural_compare(left: &str, right: &str) -> Ordering {
-    // ASCII の連続した数字を、整数へ変換せず数値として比較する。
-    // これにより、極端に長いページ番号でもオーバーフローしない
-    let left = left.as_bytes();
-    let right = right.as_bytes();
-    let (mut left_index, mut right_index) = (0, 0);
-
-    while left_index < left.len() && right_index < right.len() {
-        if left[left_index].is_ascii_digit() && right[right_index].is_ascii_digit() {
-            let left_end = digit_run_end(left, left_index);
-            let right_end = digit_run_end(right, right_index);
-            let comparison =
-                compare_digit_runs(&left[left_index..left_end], &right[right_index..right_end]);
-
-            if comparison != Ordering::Equal {
-                return comparison;
+/// JPEG の Start Of Frame セグメントから幅と高さを読み取る
+fn read_jpeg_dimensions(path: &Path) -> Result<ImageDimensions, ImageCollectionError> {
+    let mut reader = BufReader::new(open_image(path)?);
+    if read_u16(&mut reader, path)? != 0xffd8 {
+        return Err(invalid_image(path, InvalidImageReason::InvalidHeader));
+    }
+    loop {
+        let marker = next_jpeg_marker(&mut reader, path)?;
+        if is_start_of_frame(marker) {
+            if read_u16(&mut reader, path)? < 8 {
+                return Err(invalid_image(path, InvalidImageReason::InvalidStructure));
             }
-
-            left_index = left_end;
-            right_index = right_end;
-        } else {
-            let comparison = left[left_index].cmp(&right[right_index]);
-            if comparison != Ordering::Equal {
-                return comparison;
+            let _precision = read_byte(&mut reader, path)?;
+            return dimensions_or_error(
+                path,
+                read_u16(&mut reader, path)? as u32,
+                read_u16(&mut reader, path)? as u32,
+            );
+        }
+        match marker {
+            0xd9 | 0xda => return Err(invalid_image(path, InvalidImageReason::InvalidStructure)),
+            0xd8 | 0x01 | 0xd0..=0xd7 => (),
+            _ => {
+                let length = read_u16(&mut reader, path)?;
+                if length < 2 {
+                    return Err(invalid_image(path, InvalidImageReason::InvalidStructure));
+                }
+                skip_bytes(&mut reader, usize::from(length - 2), path)?;
             }
-
-            left_index += 1;
-            right_index += 1;
         }
     }
-
-    left.len().cmp(&right.len())
 }
 
-fn digit_run_end(value: &[u8], start: usize) -> usize {
-    // `start` は常に数字を指すため、返す位置は少なくとも1バイト後になる。
-    // そのため、安全なスライス境界として用いることが可能
-    value[start..]
-        .iter()
-        .position(|byte| !byte.is_ascii_digit())
-        .map_or(value.len(), |offset| start + offset)
-}
-
-fn compare_digit_runs(left: &[u8], right: &[u8]) -> Ordering {
-    // 数字列は、まず有効桁数で比較する。
-    // 数値が同じ場合は、先行するゼロが少ない方を先にする
-    let left_significant = trim_leading_zeroes(left);
-    let right_significant = trim_leading_zeroes(right);
-
-    left_significant
-        .len()
-        .cmp(&right_significant.len())
-        .then_with(|| left_significant.cmp(right_significant))
-        .then_with(|| left.len().cmp(&right.len()))
-}
-
-fn trim_leading_zeroes(value: &[u8]) -> &[u8] {
-    // すべてゼロの連続部分では、ゼロを1つ残す。
-    // これにより、数値表現が空のスライスにならない
-    let first_significant = value
-        .iter()
-        .position(|byte| *byte != b'0')
-        .unwrap_or(value.len());
-
-    if first_significant == value.len() {
-        &value[value.len() - 1..]
-    } else {
-        &value[first_significant..]
+/// PNG の IHDR チャンクから幅と高さを読み取る
+fn read_png_dimensions(path: &Path) -> Result<ImageDimensions, ImageCollectionError> {
+    // PNG の先頭チャンクは IHDR であり、幅と高さを読み取るために必要な範囲だけを読む
+    let mut reader = BufReader::new(open_image(path)?);
+    let mut header = [0; 24];
+    reader
+        .read_exact(&mut header)
+        .map_err(|source| ImageCollectionError::ReadImage {
+            path: path.to_path_buf(),
+            source,
+        })?;
+    let signature = [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
+    if header[..8] != signature || header[8..16] != [0, 0, 0, 13, b'I', b'H', b'D', b'R'] {
+        return Err(invalid_image(path, InvalidImageReason::InvalidHeader));
     }
+    dimensions_or_error(
+        path,
+        u32::from_be_bytes(header[16..20].try_into().unwrap()),
+        u32::from_be_bytes(header[20..24].try_into().unwrap()),
+    )
 }
 
-fn read_jpeg_dimensions(path: &Path) -> Result<ImageDimensions, ImageCollectionError> {
-    // JPEG は Start Of Frame セグメントに幅と高さを記録する。
-    // その位置までだけ読み取ることで、
-    // 入力バイト列を保持し、ピクセルデータの確保も避ける
-    let file = File::open(path).map_err(|source| ImageCollectionError::ReadImage {
+/// 画像ファイルを開く
+fn open_image(path: &Path) -> Result<File, ImageCollectionError> {
+    File::open(path).map_err(|source| ImageCollectionError::ReadImage {
         path: path.to_path_buf(),
         source,
-    })?;
-    let mut reader = BufReader::new(file);
+    })
+}
 
-    let start = read_u16(&mut reader, path)?;
-    if start != 0xffd8 {
-        return Err(invalid_jpeg(path, InvalidJpegReason::MissingStartOfImage));
-    }
-
-    loop {
-        let marker = next_marker(&mut reader, path)?;
-
-        if is_start_of_frame(marker) {
-            let segment_length = read_u16(&mut reader, path)?;
-            if segment_length < 8 {
-                return Err(invalid_jpeg(path, InvalidJpegReason::ShortStartOfFrame));
-            }
-
-            let _precision = read_byte(&mut reader, path)?;
-            let height = read_u16(&mut reader, path)? as u32;
-            let width = read_u16(&mut reader, path)? as u32;
-
-            if width == 0 || height == 0 {
-                return Err(invalid_jpeg(path, InvalidJpegReason::ZeroDimensions));
-            }
-
-            return Ok(ImageDimensions { width, height });
-        }
-
-        match marker {
-            0xd9 => return Err(invalid_jpeg(path, InvalidJpegReason::MissingStartOfFrame)),
-            0xda => {
-                return Err(invalid_jpeg(
-                    path,
-                    InvalidJpegReason::StartOfFrameAfterImageData,
-                ));
-            }
-            0xd8 | 0x01 | 0xd0..=0xd7 => continue,
-            _ => {
-                let segment_length = read_u16(&mut reader, path)?;
-                if segment_length < 2 {
-                    return Err(invalid_jpeg(path, InvalidJpegReason::ShortSegment));
-                }
-
-                skip_bytes(&mut reader, usize::from(segment_length - 2), path)?;
-            }
-        }
+/// 幅と高さが有効であることを確認する
+fn dimensions_or_error(
+    path: &Path,
+    width: u32,
+    height: u32,
+) -> Result<ImageDimensions, ImageCollectionError> {
+    if width == 0 || height == 0 {
+        Err(invalid_image(path, InvalidImageReason::InvalidDimensions))
+    } else {
+        Ok(ImageDimensions { width, height })
     }
 }
 
-fn next_marker(reader: &mut impl Read, path: &Path) -> Result<u8, ImageCollectionError> {
-    // JPEG マーカーは 0xFF で始まる。
-    // - 連続する 0xFF は埋め込み用バイト。
-    //   0xFF00 はバイトスタッフィングのためマーカーではない
+/// JPEG マーカーを読み進める
+fn next_jpeg_marker(reader: &mut impl Read, path: &Path) -> Result<u8, ImageCollectionError> {
     loop {
         if read_byte(reader, path)? != 0xff {
             continue;
         }
-
         let mut marker = read_byte(reader, path)?;
         while marker == 0xff {
             marker = read_byte(reader, path)?;
         }
-
         if marker != 0x00 {
             return Ok(marker);
         }
     }
 }
 
+/// JPEG の Start Of Frame マーカーであるかを判定する
 fn is_start_of_frame(marker: u8) -> bool {
-    // JPEG には複数の SOF 形式がある。いずれも先頭の同じフィールドに画像サイズを持つ。
-    // 除外したマーカー値には別の意味がある
-    matches!(
-        marker,
-        0xc0..=0xc3 | 0xc5..=0xc7 | 0xc9..=0xcb | 0xcd..=0xcf
-    )
+    matches!(marker, 0xc0..=0xc3 | 0xc5..=0xc7 | 0xc9..=0xcb | 0xcd..=0xcf)
 }
 
+/// ビッグエンディアンの16ビット値を読み取る
 fn read_u16(reader: &mut impl Read, path: &Path) -> Result<u16, ImageCollectionError> {
-    // JPEG は複数バイトのフィールドをビッグエンディアンで格納する
-    let high = read_byte(reader, path)?;
-    let low = read_byte(reader, path)?;
-    Ok(u16::from_be_bytes([high, low]))
+    Ok(u16::from_be_bytes([
+        read_byte(reader, path)?,
+        read_byte(reader, path)?,
+    ]))
 }
 
+/// 1バイトを読み取る
 fn read_byte(reader: &mut impl Read, path: &Path) -> Result<u8, ImageCollectionError> {
-    // 読み取り不足も、ほかの I/O と同じパス情報付きエラーへ変換する。
     let mut buffer = [0];
     reader
         .read_exact(&mut buffer)
@@ -352,143 +303,200 @@ fn read_byte(reader: &mut impl Read, path: &Path) -> Result<u8, ImageCollectionE
     Ok(buffer[0])
 }
 
+/// セグメントの残りを読み飛ばす
 fn skip_bytes(
     reader: &mut impl Read,
-    byte_count: usize,
+    mut count: usize,
     path: &Path,
 ) -> Result<(), ImageCollectionError> {
-    // セグメント長は入力ファイルで決まる。
-    // そのため入力サイズの一時ベクタは確保せず、固定サイズのバッファで読み飛ばす
-    let mut remaining = byte_count;
     let mut buffer = [0; 1024];
-
-    while remaining > 0 {
-        let count = remaining.min(buffer.len());
-        reader.read_exact(&mut buffer[..count]).map_err(|source| {
+    while count > 0 {
+        let length = count.min(buffer.len());
+        reader.read_exact(&mut buffer[..length]).map_err(|source| {
             ImageCollectionError::ReadImage {
                 path: path.to_path_buf(),
                 source,
             }
         })?;
-        remaining -= count;
+        count -= length;
     }
-
     Ok(())
 }
 
-fn invalid_jpeg(path: &Path, reason: InvalidJpegReason) -> ImageCollectionError {
-    // 検証エラーの生成方法を統一し、原因となったパスを保持する。
-    ImageCollectionError::InvalidJpeg {
+/// 画像構造の検証エラーへパスを付加する
+fn invalid_image(path: &Path, reason: InvalidImageReason) -> ImageCollectionError {
+    ImageCollectionError::InvalidImage {
         path: path.to_path_buf(),
         reason,
     }
 }
 
-// 単体テストは `cargo test` のときだけコンパイルされる。
-// ファイルの選択、自然順、JPEG ヘッダー解析、不正な入力の処理を確認する。
+/// パスを自然順で比較する
+fn natural_path_compare(left: &Path, right: &Path) -> Ordering {
+    natural_compare(
+        &left.file_name().unwrap_or_default().to_string_lossy(),
+        &right.file_name().unwrap_or_default().to_string_lossy(),
+    )
+    .then_with(|| left.cmp(right))
+}
+
+/// ファイル名に含まれる連続数字を数値として扱う
+fn natural_compare(left: &str, right: &str) -> Ordering {
+    let (left, right) = (left.as_bytes(), right.as_bytes());
+    let (mut l, mut r) = (0, 0);
+    while l < left.len() && r < right.len() {
+        if left[l].is_ascii_digit() && right[r].is_ascii_digit() {
+            let le = digit_run_end(left, l);
+            let re = digit_run_end(right, r);
+            let order = compare_digit_runs(&left[l..le], &right[r..re]);
+            if order != Ordering::Equal {
+                return order;
+            }
+            l = le;
+            r = re;
+        } else {
+            let order = left[l].cmp(&right[r]);
+            if order != Ordering::Equal {
+                return order;
+            }
+            l += 1;
+            r += 1;
+        }
+    }
+    left.len().cmp(&right.len())
+}
+
+/// 連続する数字の末尾位置を返す
+fn digit_run_end(value: &[u8], start: usize) -> usize {
+    value[start..]
+        .iter()
+        .position(|byte| !byte.is_ascii_digit())
+        .map_or(value.len(), |offset| start + offset)
+}
+
+/// 数字列を有効桁数、数値、ゼロ埋めの順に比較する
+fn compare_digit_runs(left: &[u8], right: &[u8]) -> Ordering {
+    let left_length = left.len();
+    let right_length = right.len();
+    let left = trim_leading_zeroes(left);
+    let right = trim_leading_zeroes(right);
+    left.len()
+        .cmp(&right.len())
+        .then_with(|| left.cmp(right))
+        .then_with(|| left_length.cmp(&right_length))
+}
+
+/// 先行ゼロを取り除く
+fn trim_leading_zeroes(value: &[u8]) -> &[u8] {
+    let start = value
+        .iter()
+        .position(|byte| *byte != b'0')
+        .unwrap_or(value.len());
+    if start == value.len() {
+        &value[value.len() - 1..]
+    } else {
+        &value[start..]
+    }
+}
+
 #[cfg(test)]
+// 画像形式の検出、画像サイズの読み取り、自然順を小さな入力ファイルで検証する
 mod tests {
+    use super::{ImageDimensions, ImageFormat, collect_images, natural_compare};
     use std::{
         fs,
         path::{Path, PathBuf},
         sync::atomic::{AtomicUsize, Ordering},
     };
-
-    use super::{ImageCollectionError, ImageDimensions, collect_jpeg_images, natural_compare};
-
-    static NEXT_TEST_DIRECTORY: AtomicUsize = AtomicUsize::new(0);
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
 
     #[test]
-    fn sorts_filenames_in_natural_order() {
+    // 拡張子の大文字小文字を問わず、JPEG と PNG を1つの自然順で扱える
+    fn collects_jpeg_and_png_in_natural_order() {
         let directory = TestDirectory::new();
-        write_jpeg(directory.path().join("page-10.jpg"), 1200, 1800);
+        write_png(directory.path().join("page-10.PNG"), 1200, 1800);
         write_jpeg(directory.path().join("page-2.JPG"), 1200, 1800);
-        write_jpeg(directory.path().join("page-1.jpeg"), 1200, 1800);
-        fs::write(directory.path().join("notes.txt"), "not an image").unwrap();
-
-        let images = collect_jpeg_images(directory.path()).unwrap();
-        let names = images
-            .iter()
-            .map(|image| {
-                image
+        write_png(directory.path().join("page-1.png"), 1200, 1759);
+        let images = collect_images(directory.path()).unwrap();
+        assert_eq!(
+            images
+                .iter()
+                .map(|image| image
                     .path
                     .file_name()
                     .unwrap()
                     .to_string_lossy()
-                    .into_owned()
-            })
-            .collect::<Vec<_>>();
-
-        assert_eq!(names, ["page-1.jpeg", "page-2.JPG", "page-10.jpg"]);
-    }
-
-    #[test]
-    fn reads_jpeg_dimensions_without_decoding_the_image() {
-        let directory = TestDirectory::new();
-        write_jpeg(directory.path().join("page-1.jpg"), 1200, 1759);
-
-        let images = collect_jpeg_images(directory.path()).unwrap();
-
+                    .into_owned())
+                .collect::<Vec<_>>(),
+            ["page-1.png", "page-2.JPG", "page-10.PNG"]
+        );
+        assert_eq!(images[0].format, ImageFormat::Png);
+        assert_eq!(images[1].format, ImageFormat::Jpeg);
         assert_eq!(
             images[0].dimensions,
             ImageDimensions {
                 width: 1200,
-                height: 1759,
+                height: 1759
             }
         );
     }
 
     #[test]
-    fn rejects_a_jpeg_extension_with_an_invalid_header() {
+    // 対応拡張子でもヘッダーが不正なら、画像として収集しない
+    fn rejects_an_image_extension_with_an_invalid_header() {
         let directory = TestDirectory::new();
-        fs::write(directory.path().join("page-1.jpg"), "not a JPEG").unwrap();
-
-        let error = collect_jpeg_images(directory.path()).unwrap_err();
-
-        assert!(matches!(error, ImageCollectionError::InvalidJpeg { .. }));
+        fs::write(directory.path().join("page-1.png"), [0; 24]).unwrap();
+        assert!(collect_images(directory.path()).is_err());
     }
 
     #[test]
+    // 同じ数値なら、ゼロ埋めが短いファイル名を先にする
     fn compares_equal_numbers_with_shorter_zero_padding_first() {
-        assert!(natural_compare("page-1.jpg", "page-01.jpg").is_lt());
+        assert!(natural_compare("page-1.png", "page-01.jpg").is_lt());
     }
-
     struct TestDirectory {
         path: PathBuf,
     }
-
     impl TestDirectory {
-        /// 独立したディレクトリを作成する（並列テストがファイルを共有しないために）
+        // テストごとに衝突しない一時ディレクトリを作る
         fn new() -> Self {
-            let unique_id = NEXT_TEST_DIRECTORY.fetch_add(1, Ordering::Relaxed);
-            let path = std::env::temp_dir().join(format!(
-                "epub-core-images-test-{}-{unique_id}",
-                std::process::id()
-            ));
+            let id = NEXT.fetch_add(1, Ordering::Relaxed);
+            let path = std::env::temp_dir()
+                .join(format!("epub-core-images-test-{}-{id}", std::process::id()));
             fs::create_dir(&path).unwrap();
             Self { path }
         }
 
+        // テスト用に作成したディレクトリを返す
         fn path(&self) -> &Path {
             &self.path
         }
     }
-
     impl Drop for TestDirectory {
-        /// 各テスト後に一時 fixture 用ディレクトリを削除する。panic した場合も同様
+        // テスト後に一時ディレクトリを削除する
         fn drop(&mut self) {
             fs::remove_dir_all(&self.path).unwrap();
         }
     }
 
+    // SOF0 を持つ最小の JPEG ヘッダーを書き込む
     fn write_jpeg(path: PathBuf, width: u16, height: u16) {
-        // ヘッダー読み取りには SOF0 セグメントだけで十分。
-        // この限定的なテストでは、圧縮済みの画像データは不要
         let mut bytes = vec![0xff, 0xd8, 0xff, 0xc0, 0x00, 0x11, 0x08];
         bytes.extend_from_slice(&height.to_be_bytes());
         bytes.extend_from_slice(&width.to_be_bytes());
-        bytes.extend_from_slice(&[0x03, 0x01, 0x11, 0x00, 0x02, 0x11, 0x00, 0x03, 0x11, 0x00]);
-        bytes.extend_from_slice(&[0xff, 0xd9]);
+        bytes.extend_from_slice(&[
+            0x03, 0x01, 0x11, 0x00, 0x02, 0x11, 0x00, 0x03, 0x11, 0x00, 0xff, 0xd9,
+        ]);
+        fs::write(path, bytes).unwrap();
+    }
+
+    // IHDR を持つ最小の PNG ヘッダーを書き込む
+    fn write_png(path: PathBuf, width: u32, height: u32) {
+        let mut bytes = vec![
+            0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, b'I', b'H', b'D', b'R',
+        ];
+        bytes.extend_from_slice(&width.to_be_bytes());
+        bytes.extend_from_slice(&height.to_be_bytes());
         fs::write(path, bytes).unwrap();
     }
 }

@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 use crate::{
     DocumentError, ImageCollectionError, MetadataError, MinimalMetadata, PackageError,
-    PublicationMetadata, collect_jpeg_images, generate_documents, write_epub,
+    PublicationMetadata, collect_images, generate_documents, write_epub,
 };
 
 /// 1回の EPUB 生成に必要な入力値
@@ -64,11 +64,10 @@ impl Error for BuildError {
     }
 }
 
-/// `image_directory` 直下にある JPEG 画像から EPUB を生成する。
+/// `image_directory` 直下にある対応画像から EPUB を生成する。
 pub fn build_epub(request: &BuildRequest) -> Result<BuildReport, BuildError> {
     let metadata = resolve_metadata(&request.metadata)?;
-    let images =
-        collect_jpeg_images(&request.image_directory).map_err(BuildError::CollectImages)?;
+    let images = collect_images(&request.image_directory).map_err(BuildError::CollectImages)?;
     let documents =
         generate_documents(&images, &metadata).map_err(BuildError::GenerateDocuments)?;
     write_epub(&request.output_path, &images, &documents).map_err(BuildError::WritePackage)?;
@@ -167,6 +166,26 @@ mod tests {
     }
 
     #[test]
+    // PNG でも、画像形式に合う manifest 項目を持つ EPUB を生成する
+    fn builds_an_epub_with_a_png_input() {
+        let directory = TestDirectory::new();
+        write_png(directory.path().join("page-1.png"));
+        let output = directory.path().join("book.epub");
+        let request = BuildRequest {
+            image_directory: directory.path().to_path_buf(),
+            output_path: output.clone(),
+            metadata: PublicationMetadata::new("書籍のタイトル".to_owned()),
+        };
+
+        build_epub(&request).unwrap();
+
+        let package = package_document(&output);
+        assert!(package.contains(
+            "<item id=\"image-0000\" href=\"images/image-0000.png\" media-type=\"image/png\" properties=\"cover-image\"/>"
+        ));
+    }
+
+    #[test]
     // 画像を読む前に書誌情報を検証するため、入力不備を早く利用者へ返せる
     fn rejects_invalid_metadata_before_collecting_images() {
         let request = BuildRequest {
@@ -224,6 +243,16 @@ mod tests {
             0xff, 0xd8, 0xff, 0xc0, 0x00, 0x11, 0x08, 0x06, 0xdf, 0x04, 0xb0, 0x03, 0x01, 0x11,
             0x00, 0x02, 0x11, 0x00, 0x03, 0x11, 0x00, 0xff, 0xd9,
         ];
+        fs::write(path, bytes).unwrap();
+    }
+
+    fn write_png(path: PathBuf) {
+        // IHDR までを持つ最小の PNG ヘッダーで、画像形式ごとの処理を確認する
+        let mut bytes = vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
+        bytes.extend_from_slice(&13_u32.to_be_bytes());
+        bytes.extend_from_slice(b"IHDR");
+        bytes.extend_from_slice(&1200_u32.to_be_bytes());
+        bytes.extend_from_slice(&1759_u32.to_be_bytes());
         fs::write(path, bytes).unwrap();
     }
 

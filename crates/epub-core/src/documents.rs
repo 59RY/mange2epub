@@ -116,7 +116,7 @@ pub fn generate_documents(
 
     Ok(GeneratedDocuments {
         container_xml: generate_container_xml()?,
-        package_opf: generate_package_opf(images.len(), metadata)?,
+        package_opf: generate_package_opf(images, metadata)?,
         navigation_xhtml: generate_navigation_xhtml(&metadata.title, &metadata.language)?,
         page_css: page_css(),
         pages,
@@ -152,7 +152,7 @@ fn generate_container_xml() -> Result<String, DocumentError> {
 }
 
 fn generate_package_opf(
-    page_count: usize,
+    images: &[SourceImage],
     metadata: &MinimalMetadata,
 ) -> Result<String, DocumentError> {
     // パッケージ文書は、メタデータ、manifest、読書順をまとめて持つ
@@ -240,7 +240,7 @@ fn generate_package_opf(
         ],
     )?;
 
-    for index in 0..page_count {
+    for (index, image) in images.iter().enumerate() {
         let page_id = page_id(index);
         let page_path = page_path(index);
         empty(
@@ -254,7 +254,7 @@ fn generate_package_opf(
         )?;
 
         let image_id = image_id(index);
-        let image_path = image_path(index);
+        let image_path = image_path(index, image.format);
         if index == 0 {
             empty(
                 &mut writer,
@@ -262,7 +262,7 @@ fn generate_package_opf(
                 &[
                     ("id", image_id.as_str()),
                     ("href", image_path.as_str()),
-                    ("media-type", "image/jpeg"),
+                    ("media-type", image.format.media_type()),
                     ("properties", "cover-image"),
                 ],
             )?;
@@ -273,7 +273,7 @@ fn generate_package_opf(
                 &[
                     ("id", image_id.as_str()),
                     ("href", image_path.as_str()),
-                    ("media-type", "image/jpeg"),
+                    ("media-type", image.format.media_type()),
                 ],
             )?;
         }
@@ -285,7 +285,7 @@ fn generate_package_opf(
         "spine",
         &[("page-progression-direction", "rtl")],
     )?;
-    for index in 0..page_count {
+    for index in 0..images.len() {
         let page_id = page_id(index);
         let placement = placement_property(default_page_placement(index));
         empty(
@@ -412,7 +412,7 @@ fn generate_page_document(
     viewport: ImageDimensions,
     title: &str,
     language: &str,
-    _image: &SourceImage,
+    image: &SourceImage,
 ) -> Result<PageDocument, DocumentError> {
     // 各画像に1つの XHTML 文書を割り当てる
     // すべてのページで、最初の画像から得た共通の viewport 寸法を使用する
@@ -452,7 +452,7 @@ fn generate_page_document(
     )?;
     end(&mut writer, "head")?;
     start(&mut writer, "body", &[])?;
-    let image_href = format!("../{}", image_path(index));
+    let image_href = format!("../{}", image_path(index, image.format));
     empty(
         &mut writer,
         "img",
@@ -504,9 +504,9 @@ fn page_path(index: usize) -> String {
     format!("pages/page-{index:04}.xhtml")
 }
 
-fn image_path(index: usize) -> String {
-    // 出力では、この版が対応する正規化済みの JPEG 拡張子を常に使用する
-    format!("images/image-{index:04}.jpg")
+fn image_path(index: usize, format: crate::ImageFormat) -> String {
+    // 出力では、画像形式に対応する正規化済みの拡張子を使用する
+    format!("images/image-{index:04}.{}", format.extension())
 }
 
 fn placement_property(placement: PagePlacement) -> &'static str {
@@ -597,7 +597,8 @@ mod tests {
 
     use super::{MinimalMetadata, generate_documents};
     use crate::{
-        AlternateScript, CreatorMetadata, ImageDimensions, PublicationMetadata, SourceImage,
+        AlternateScript, CreatorMetadata, ImageDimensions, ImageFormat, PublicationMetadata,
+        SourceImage,
     };
 
     #[test]
@@ -676,6 +677,27 @@ mod tests {
 
         assert!(documents.package_opf.contains("A &amp; B &lt; C"));
         assert!(documents.navigation_xhtml.contains("A &amp; B &lt; C"));
+    }
+
+    #[test]
+    // 画像ごとに拡張子と MIME type を出し分け、XHTML の参照先も一致させる
+    fn uses_each_image_format_in_the_manifest_and_page_document() {
+        let mut images = images();
+        images[0].format = ImageFormat::Png;
+
+        let documents = generate_documents(&images, &metadata()).unwrap();
+
+        assert!(documents.package_opf.contains(
+            "<item id=\"image-0000\" href=\"images/image-0000.png\" media-type=\"image/png\" properties=\"cover-image\"/>"
+        ));
+        assert!(
+            documents.pages[0]
+                .contents
+                .contains("../images/image-0000.png")
+        );
+        assert!(documents.package_opf.contains(
+            "<item id=\"image-0001\" href=\"images/image-0001.jpg\" media-type=\"image/jpeg\"/>"
+        ));
     }
 
     #[test]
@@ -782,6 +804,7 @@ mod tests {
         (0..3)
             .map(|index| SourceImage {
                 path: PathBuf::from(format!("source-{index}.jpg")),
+                format: ImageFormat::Jpeg,
                 dimensions: ImageDimensions {
                     width: 1200,
                     height: 1759,

@@ -15,7 +15,8 @@ pub use documents::{
     DocumentError, GeneratedDocuments, MinimalMetadata, PageDocument, generate_documents,
 };
 pub use images::{
-    ImageCollectionError, ImageDimensions, InvalidJpegReason, SourceImage, collect_jpeg_images,
+    ImageCollectionError, ImageDimensions, ImageFormat, InvalidImageReason, SourceImage,
+    collect_images,
 };
 pub use metadata::{AlternateScript, CreatorMetadata, MetadataError, PublicationMetadata};
 pub use package::{PackageError, write_epub};
