@@ -706,7 +706,7 @@ EPUB 3.3 で必要な、
 
 ---
 
-# 13. 旧EPUB 3.0時代の互換メタデータ
+# 13. 互換メタデータ
 
 過去に利用していた以下のようなメタデータは、EPUB 3.3標準出力では原則として生成しない。
 
@@ -717,7 +717,6 @@ EPUB 3.3 で必要な、
 <meta content="comic" name="book-type"/>
 <meta content="horizontal-rl" name="primary-writing-mode"/>
 <meta content="#ffffff" name="SpineColor"/>
-<meta name="cover" content="cover"/>
 ```
 
 理由は、これらがEPUB 3.3 CoreにおけるFixed Layoutの基本表現ではないためである。
@@ -749,15 +748,21 @@ page-progression-direction="rtl"
 
 を利用する。
 
-将来的に特定Reading System向け互換性が必要と判明した場合のみ、
+特定のビューア向け互換性が必要と判明した場合のみ **compatibility profile** として追加する。ベンダー固有メタデータを標準動作へ混在させないこと。
 
-```text
-compatibility profile
+## 13.1 表紙の旧仕様互換
+
+表紙画像は、EPUB 3.3 の標準である manifest の `cover-image` プロパティで指定する。
+
+Finder の Quick Look を含む旧仕様の表紙参照にも対応するため、標準出力では次も生成する。
+
+```xml
+<meta name="cover" content="image-0000"/>
 ```
 
-として追加する。
+`content` の値は、表紙画像を表す manifest item の `id` と一致させる。
 
-ベンダー固有メタデータを標準動作へ混在させないこと。
+このメタデータは EPUB 2 互換のための限定的な例外であり、他の旧仕様・ベンダー固有メタデータを追加する根拠にはしない。
 
 ---
 
@@ -2011,7 +2016,6 @@ Manga EPUB Packager
 - `rendition:orientation` を明示出力するか
 - `rendition:page-spread-left/right` と非prefix版を併記する互換モード
 - NCX互換出力
-- EPUB 2 `meta name="cover"` 互換出力
 - GUIフレームワークの最終決定
 - 使用するRust crate
 - CI/CD構成
