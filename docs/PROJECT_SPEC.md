@@ -2,7 +2,7 @@
 
 ## 1. 文書の目的
 
-本書は、漫画の各ページをJPEG画像として受け取り、漫画向けFixed Layout EPUBを生成するコンバーター「manga2epub」の初期仕様・設計方針を定義する。
+本書は、漫画の各ページを画像として受け取り、漫画向けFixed Layout EPUBを生成するコンバーター「manga2epub」の初期仕様・設計方針を定義する。
 
 最初にCLIアプリケーションとして実装し、CLIおよびEPUB生成コアが十分に安定した後、同一のコアライブラリを利用するGUIアプリケーションへ発展させる。
 
@@ -22,7 +22,7 @@
 
 ## 2.1 目的
 
-JPEG形式で用意された漫画の各ページを、EPUB 3.3準拠のFixed Layout EPUBとしてパッケージングする。
+JPEG または PNG 形式で用意された漫画の各ページを、EPUB 3.3 準拠の Fixed-Layout EPUB としてパッケージングする。
 
 本ツールの主な責務は以下とする。
 
@@ -414,13 +414,14 @@ Page 6 = right
 
 ## 10.1 初期対応形式
 
-JPEGを必須対応形式とする。
+JPEGおよびPNGを必須対応形式とする。
 
 最低限、
 
 ```text
 .jpg
 .jpeg
+.png
 ```
 
 を扱えること。
@@ -429,11 +430,11 @@ JPEGを必須対応形式とする。
 
 ## 10.2 画像処理を行わない
 
-本ツールは入力JPEGについて以下を行わない。
+本ツールは入力画像について以下を行わない。
 
 - リサイズ
 - 再圧縮
-- JPEG品質変更
+- 画像品質変更
 - トリミング
 - 余白除去
 - 色補正
@@ -441,11 +442,11 @@ JPEGを必須対応形式とする。
 - 自動回転
 - アスペクト比補正
 
-EPUB内へ格納するJPEGのバイト列は、原則として入力ファイルと同一とする。
+EPUB内へ格納する画像のバイト列は、原則として入力ファイルと同一とする。
 
 ## 10.3 画像情報の参照
 
-EPUB生成に必要な範囲でJPEGの以下の情報を読み取ることは許容する。
+EPUB生成に必要な範囲で画像の以下の情報を読み取ることは許容する。
 
 - width
 - height
@@ -495,11 +496,14 @@ image-0000.jpg
 
 image-0001.jpg
 → page-0001.xhtml
+
+image-0002.png
+→ page-0002.xhtml
 ```
 
 とする。
 
-XHTMLはFixed Layout用viewportを持ち、対応するJPEG画像を1枚表示する。
+XHTMLは固定レイアウト用viewportを持ち、対応する画像を1枚表示する。
 
 画像はページ全面へ表示し、不要な余白、padding、marginを持たせない。
 
@@ -1061,7 +1065,7 @@ page: 1
 
 ### デフォルト
 
-ユーザーによる明示指定がない場合、入力ディレクトリ内のJPEGをファイル名の昇順で読み込む。
+ユーザーによる明示指定がない場合、入力ディレクトリ内の対応画像をファイル名の昇順で読み込む。
 
 数値部分は自然順で比較する。
 
@@ -1121,7 +1125,7 @@ manga2epub build ./images --output ./book.epub --title "書籍のタイトル"
 
 `<image_directory>`、`--output`、`--title` を指定して EPUB を生成する。
 
-画像ディレクトリ内の JPEG 画像を自然順でページとして扱う。
+画像ディレクトリ内の対応画像を自然順でページとして扱う。
 
 ## 21.2 メタデータ指定
 
@@ -1433,7 +1437,7 @@ images/image-0002.jpg
 - 明示された画像ファイルが存在しない
 - 明示された画像順序に同一ファイルが重複している
 - EPUB生成先へ書き込めない
-- JPEGとして読み取れない入力
+- 対応画像として読み取れない入力
 
 ## 警告候補
 
@@ -1448,7 +1452,7 @@ images/image-0002.jpg
 
 ## 27.1 縦横比不一致の扱い
 
-JPEGの縦横比不一致はWARNINGとする。
+画像の縦横比不一致はWARNINGとする。
 
 少なくとも初期仕様では、縦横比不一致をERRORにしない。
 
@@ -1534,19 +1538,19 @@ page-10.jpg
 
 `nav.xhtml` の目次項目が正しいXHTMLへリンクすること。
 
-## 28.4 JPEG無加工テスト
+## 28.4 画像無加工テスト
 
-重要な品質条件として、入力JPEGとEPUB内JPEGのSHA-256を比較する。
+重要な品質条件として、入力画像とEPUB内画像のSHA-256を比較する。
 
 ```text
-SHA256(input JPEG)
+SHA256(input image)
 ==
-SHA256(JPEG extracted from EPUB)
+SHA256(image extracted from EPUB)
 ```
 
 となること。
 
-これにより、本ツールがJPEGを再圧縮・改変していないことを自動テストする。
+これにより、本ツールが入力画像を再圧縮・改変していないことを自動テストする。
 
 ## 28.5 Warning Test
 
@@ -1630,6 +1634,7 @@ Page 3 = left
 - language
 - identifier
 - UUID auto generation
+- PNG input support
 
 ## Phase 3 — YAML
 
@@ -1686,8 +1691,8 @@ GUIでEPUB生成ロジックを再実装しない。
 
 以下はスコープ外とする。
 
-- JPEG自動縮小
-- JPEG圧縮率変更
+- 画像の自動縮小
+- 画像圧縮率変更
 - 画像フォーマット変換
 - 自動トリミング
 - 自動余白除去
@@ -1861,7 +1866,7 @@ Later:
 
 - Cargo Workspaceの初期構築
 - 基本データモデルの追加
-- JPEG列挙と自然順ソート
+- 画像列挙と自然順ソート
 - ページ配置ロジックとテスト
 - OCF/ZIP生成
 - OPF生成
@@ -1954,7 +1959,7 @@ ZIP crate
 UUID crate
   identifier generation
 
-JPEG metadata reader
+JPEG / PNG metadata reader
   width / height acquisition
 ```
 
@@ -2008,7 +2013,7 @@ Manga EPUB Packager
 - 明示順序に含まれない画像をエラーとするか、自動順序で末尾へ追加するか
 - natural sortの詳細仕様
 - viewportの正確な決定方法
-- JPEG縦横比不一致のWARNING閾値
+- 画像縦横比不一致のWARNING閾値
 - 数ピクセル程度の差を許容するか
 - 縦横比の差を絶対値・相対値のどちらで判定するか
 - center配置画像の縦横比WARNING扱い
@@ -2029,11 +2034,11 @@ Manga EPUB Packager
 - プロジェクト名は `manga2epub`
 - CLIコマンド名は `manga2epub`
 - `book.yaml` は本書の初期案を基礎として進める
-- EPUB内部で元JPEGファイル名を維持しない
+- EPUB内部で元の入力ファイル名を維持しない
 - 明示指定がない場合はファイル名の自然順で読み込む
 - 明示的な1ファイル単位のページ順指定を将来サポートする
 - `rendition:spread` の標準値は `landscape`
-- JPEG縦横比不一致はWARNINGとし、少なくとも初期仕様ではERRORにしない
+- 画像縦横比不一致はWARNINGとし、少なくとも初期仕様ではERRORにしない
 - 既存EPUB編集機能は最低優先度とする
 
 未決定事項を実装者の独断で固定仕様にしない。
@@ -2046,7 +2051,7 @@ Manga EPUB Packager
 
 1. macOS上でCLIとして動作する。
 2. CLIコマンド名が `manga2epub` である。
-3. JPEG群からEPUB 3.3 Fixed Layoutを生成できる。
+3. JPEGまたはPNGの画像群からEPUB 3.3 固定レイアウトを生成できる。
 4. 1ページ目が表紙になる。
 5. RTL漫画としてページが進行する。
 6. 2ページ目以降がデフォルトでright/left交互になる。
@@ -2061,12 +2066,12 @@ Manga EPUB Packager
 15. Identifierを指定できる。
 16. Identifier未指定時はUUIDを生成する。
 17. 目次を指定できる。
-18. 入力JPEGを再圧縮・加工しない。
+18. 入力画像を再圧縮・加工しない。
 19. 縦横比不一致をWARNINGとして通知できる。
 20. 縦横比不一致によって通常のEPUB生成を失敗させない。
 21. EPUBCheckで重大なエラーがない。
 22. Apple Booksで正常に開ける。
-23. Google Play BooksでFixed Layout漫画として実用可能な表示になる。
+23. Google Play Booksで固定レイアウト漫画として実用可能な表示になる。
 24. EPUB生成処理がCLIから分離されたRustライブラリになっている。
 25. 将来のGUIで1ファイル単位のページ順指定を扱えるデータモデルになっている。
 
