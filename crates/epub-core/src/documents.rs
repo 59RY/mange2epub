@@ -211,6 +211,12 @@ fn generate_package_opf(
         &[("property", "rendition:spread")],
         "landscape",
     )?;
+    let cover_image_id = image_id(0);
+    empty(
+        &mut writer,
+        "meta",
+        &[("name", "cover"), ("content", cover_image_id.as_str())],
+    )?;
     end(&mut writer, "metadata")?;
 
     start(&mut writer, "manifest", &[])?;
@@ -624,6 +630,11 @@ mod tests {
                 .contains("page-progression-direction=\"rtl\"")
         );
         assert!(documents.package_opf.contains("properties=\"cover-image\""));
+        assert!(
+            documents
+                .package_opf
+                .contains("<meta name=\"cover\" content=\"image-0000\"/>")
+        );
         assert!(documents.package_opf.contains(
             "<itemref idref=\"page-0000\" properties=\"rendition:page-spread-center\"/>"
         ));
