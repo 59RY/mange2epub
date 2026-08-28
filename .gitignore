@@ -3,6 +3,7 @@
 *.swp
 *~
 .#*
+.codex/
 .idea/
 .nova/
 .vscode/
