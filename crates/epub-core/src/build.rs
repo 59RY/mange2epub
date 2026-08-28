@@ -203,7 +203,7 @@ mod tests {
     }
 
     fn package_document(path: &Path) -> String {
-        // Reading System と同じように、アーカイブから最終的な .opf を読み取る
+        // ビューアーと同じように、アーカイブから最終的な .opf を読み取る
         let file = fs::File::open(path).unwrap();
         let mut archive = ZipArchive::new(file).unwrap();
         let mut package = String::new();

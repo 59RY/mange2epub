@@ -1,4 +1,4 @@
-/// Reading System が Synthetic Spread で表示するときのページ位置
+/// ビューアー が Synthetic Spread で表示するときのページ位置
 ///
 /// この値は EPUB の `rendition:page-spread-*` プロパティへ対応する。
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
