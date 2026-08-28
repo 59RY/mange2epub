@@ -6,6 +6,7 @@
 mod build;
 mod documents;
 mod images;
+mod metadata;
 mod package;
 mod pages;
 
@@ -14,7 +15,9 @@ pub use documents::{
     DocumentError, GeneratedDocuments, MinimalMetadata, PageDocument, generate_documents,
 };
 pub use images::{
-    ImageCollectionError, ImageDimensions, InvalidJpegReason, SourceImage, collect_jpeg_images,
+    ImageCollectionError, ImageDimensions, ImageFormat, InvalidImageReason, SourceImage,
+    collect_images,
 };
+pub use metadata::{AlternateScript, CreatorMetadata, MetadataError, PublicationMetadata};
 pub use package::{PackageError, write_epub};
 pub use pages::{PagePlacement, default_page_placement};

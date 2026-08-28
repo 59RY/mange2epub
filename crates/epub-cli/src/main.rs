@@ -1,7 +1,10 @@
 use std::{path::PathBuf, process::ExitCode};
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use epub_core::{BuildError, BuildReport, BuildRequest, build_epub};
+use epub_core::{
+    AlternateScript, BuildError, BuildReport, BuildRequest, CreatorMetadata, PublicationMetadata,
+    build_epub,
+};
 
 mod i18n;
 
@@ -52,19 +55,93 @@ impl Locale {
 /// 現在アプリケーションが対応しているコマンド
 #[derive(Debug, Subcommand)]
 enum Command {
-    /// JPEG 画像のディレクトリから EPUB を生成する
+    /// 対応する画像のディレクトリから EPUB を生成する
     Build(BuildArguments),
 }
 
 /// `build` コマンドが受け取る引数
 #[derive(Args, Debug)]
 struct BuildArguments {
-    /// ページ画像の JPEG が入ったディレクトリ
+    /// ページ画像が入ったディレクトリ
     image_directory: PathBuf,
 
     /// 生成する EPUB ファイルのパス
     #[arg(short, long)]
     output: PathBuf,
+
+    /// 書籍のタイトル
+    #[arg(long)]
+    title: String,
+
+    /// タイトルの読み
+    #[arg(long)]
+    title_file_as: Option<String>,
+
+    /// 著者名
+    #[arg(long)]
+    creator: Option<String>,
+
+    /// 著者名の読み
+    #[arg(long, requires = "creator")]
+    creator_file_as: Option<String>,
+
+    /// 著者の役割
+    #[arg(long, requires = "creator")]
+    creator_role: Option<String>,
+
+    /// 著者名の別表記
+    #[arg(long, requires_all = ["creator", "creator_alternate_script_language"])]
+    creator_alternate_script: Option<String>,
+
+    /// 著者名の別表記に対応する言語タグ
+    #[arg(long, requires_all = ["creator", "creator_alternate_script"])]
+    creator_alternate_script_language: Option<String>,
+
+    /// 書籍の説明文
+    #[arg(long)]
+    description: Option<String>,
+
+    /// 発行元
+    #[arg(long)]
+    publisher: Option<String>,
+
+    /// 書籍の言語
+    #[arg(long, default_value = "ja")]
+    language: String,
+
+    /// Primary Identifier
+    #[arg(long)]
+    identifier: Option<String>,
+}
+
+impl BuildArguments {
+    /// CLI 引数を、利用者が指定する書誌情報とビルド処理の入力へ変換する
+    fn into_build_request(self) -> BuildRequest {
+        let alternate_script = self
+            .creator_alternate_script
+            .zip(self.creator_alternate_script_language)
+            .map(|(value, language)| AlternateScript { value, language });
+        let creator = self.creator.map(|name| CreatorMetadata {
+            name,
+            file_as: self.creator_file_as,
+            role: self.creator_role,
+            alternate_script,
+        });
+
+        BuildRequest {
+            image_directory: self.image_directory,
+            output_path: self.output,
+            metadata: PublicationMetadata {
+                title: self.title,
+                title_file_as: self.title_file_as,
+                creator,
+                description: self.description,
+                publisher: self.publisher,
+                language: self.language,
+                identifier: self.identifier,
+            },
+        }
+    }
 }
 
 fn main() -> ExitCode {
@@ -92,10 +169,7 @@ fn resolve_locale(explicit: Option<Locale>, system_locale: Option<&str>) -> Loca
 fn run(command: Command) -> Result<BuildReport, BuildError> {
     // 引数解析はこの crate で行い、EPUB 生成処理は epub-core に置く
     match command {
-        Command::Build(arguments) => build_epub(&BuildRequest {
-            image_directory: arguments.image_directory,
-            output_path: arguments.output,
-        }),
+        Command::Build(arguments) => build_epub(&arguments.into_build_request()),
     }
 }
 
@@ -115,22 +189,130 @@ mod tests {
     static NEXT_TEST_DIRECTORY: AtomicUsize = AtomicUsize::new(0);
 
     #[test]
-    fn parses_the_build_command_with_an_output_path() {
-        let cli =
-            Cli::try_parse_from(["manga2epub", "build", "./images", "--output", "./book.epub"])
-                .unwrap();
+    // 必須のタイトルと出力先だけで、読みなどの任意項目を省略して実行できる
+    fn parses_the_build_command_with_required_arguments() {
+        let cli = Cli::try_parse_from([
+            "manga2epub",
+            "build",
+            "./images",
+            "--output",
+            "./book.epub",
+            "--title",
+            "書籍のタイトル",
+        ])
+        .unwrap();
 
+        let locale = cli.locale;
         let Command::Build(arguments) = cli.command;
-        assert_eq!(cli.locale, None);
-        assert_eq!(arguments.image_directory.to_string_lossy(), "./images");
-        assert_eq!(arguments.output.to_string_lossy(), "./book.epub");
+        let request = arguments.into_build_request();
+
+        assert_eq!(locale, None);
+        assert_eq!(request.image_directory.to_string_lossy(), "./images");
+        assert_eq!(request.output_path.to_string_lossy(), "./book.epub");
+        assert_eq!(request.metadata.title, "書籍のタイトル");
+        assert_eq!(request.metadata.language, "ja");
+        assert_eq!(request.metadata.title_file_as, None);
+        assert_eq!(request.metadata.creator, None);
     }
 
     #[test]
-    fn rejects_the_build_command_without_an_output_path() {
-        let result = Cli::try_parse_from(["manga2epub", "build", "./images"]);
+    // EPUB の必須メタデータであるタイトルを、CLI でも必須の入力にする
+    fn rejects_the_build_command_without_a_title() {
+        let result =
+            Cli::try_parse_from(["manga2epub", "build", "./images", "--output", "./book.epub"]);
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    // 出力先は生成結果の保存先を明確にするため、引き続き必須とする
+    fn rejects_the_build_command_without_an_output_path() {
+        let result = Cli::try_parse_from([
+            "manga2epub",
+            "build",
+            "./images",
+            "--title",
+            "書籍のタイトル",
+        ]);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    // 別表記は言語タグと一組で扱い、不完全な値をコアへ渡さない
+    fn rejects_an_alternate_script_without_its_language() {
+        let result = Cli::try_parse_from([
+            "manga2epub",
+            "build",
+            "./images",
+            "--output",
+            "./book.epub",
+            "--title",
+            "書籍のタイトル",
+            "--creator",
+            "著者名",
+            "--creator-alternate-script",
+            "チョシャメイ",
+        ]);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    // すべてのメタデータオプションを、コアが利用する構造へ変換する
+    fn parses_the_build_command_with_all_metadata_options() {
+        let cli = Cli::try_parse_from([
+            "manga2epub",
+            "build",
+            "./images",
+            "--output",
+            "./book.epub",
+            "--title",
+            "書籍のタイトル",
+            "--title-file-as",
+            "ショセキノタイトル",
+            "--creator",
+            "著者名",
+            "--creator-file-as",
+            "チョシャメイ",
+            "--creator-role",
+            "edt",
+            "--creator-alternate-script",
+            "チョシャメイ",
+            "--creator-alternate-script-language",
+            "ja-Kana",
+            "--description",
+            "説明文",
+            "--publisher",
+            "発行元",
+            "--language",
+            "en",
+            "--identifier",
+            "https://example.com/books/123",
+        ])
+        .unwrap();
+
+        let Command::Build(arguments) = cli.command;
+        let request = arguments.into_build_request();
+        let creator = request.metadata.creator.unwrap();
+        let alternate_script = creator.alternate_script.unwrap();
+
+        assert_eq!(
+            request.metadata.title_file_as.as_deref(),
+            Some("ショセキノタイトル")
+        );
+        assert_eq!(request.metadata.description.as_deref(), Some("説明文"));
+        assert_eq!(request.metadata.publisher.as_deref(), Some("発行元"));
+        assert_eq!(request.metadata.language, "en");
+        assert_eq!(
+            request.metadata.identifier.as_deref(),
+            Some("https://example.com/books/123")
+        );
+        assert_eq!(creator.name, "著者名");
+        assert_eq!(creator.file_as.as_deref(), Some("チョシャメイ"));
+        assert_eq!(creator.role.as_deref(), Some("edt"));
+        assert_eq!(alternate_script.value, "チョシャメイ");
+        assert_eq!(alternate_script.language, "ja-Kana");
     }
 
     #[test]
@@ -139,10 +321,10 @@ mod tests {
         write_jpeg(directory.path().join("page-1.jpg"));
         let output = directory.path().join("book.epub");
 
-        let report = run(Command::Build(BuildArguments {
-            image_directory: directory.path().to_path_buf(),
-            output: output.clone(),
-        }))
+        let report = run(Command::Build(build_arguments(
+            directory.path().to_path_buf(),
+            output.clone(),
+        )))
         .unwrap();
 
         assert_eq!(report.output_path, output);
@@ -160,6 +342,8 @@ mod tests {
             "./images",
             "--output",
             "./book.epub",
+            "--title",
+            "書籍のタイトル",
         ])
         .unwrap();
 
@@ -175,8 +359,27 @@ mod tests {
         assert_eq!(resolve_locale(None, None), Locale::En);
     }
 
+    /// ビルド実行テスト用の、必須項目だけを持つ CLI 引数を作る
+    fn build_arguments(image_directory: PathBuf, output: PathBuf) -> BuildArguments {
+        BuildArguments {
+            image_directory,
+            output,
+            title: "書籍のタイトル".to_owned(),
+            title_file_as: None,
+            creator: None,
+            creator_file_as: None,
+            creator_role: None,
+            creator_alternate_script: None,
+            creator_alternate_script_language: None,
+            description: None,
+            publisher: None,
+            language: "ja".to_owned(),
+            identifier: None,
+        }
+    }
+
     fn write_jpeg(path: PathBuf) {
-        // SOF0セグメントだけで、コアの入力処理が画像サイズを取得できる
+        // SOF0 セグメントだけで、コアの入力処理が画像サイズを取得できる
         let bytes = [
             0xff, 0xd8, 0xff, 0xc0, 0x00, 0x11, 0x08, 0x06, 0xdf, 0x04, 0xb0, 0x03, 0x01, 0x11,
             0x00, 0x02, 0x11, 0x00, 0x03, 0x11, 0x00, 0xff, 0xd9,

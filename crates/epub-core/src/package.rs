@@ -73,7 +73,7 @@ impl Error for PackageError {
     }
 }
 
-/// 生成した EPUB リソース および 入力 JPEG を OCF ZIP アーカイブへ書き込む
+/// 生成した EPUB リソース および 入力画像を OCF ZIP アーカイブへ書き込む
 pub fn write_epub(
     output_path: &Path,
     images: &[SourceImage],
@@ -132,7 +132,10 @@ pub fn write_epub(
     }
 
     for (index, image) in images.iter().enumerate() {
-        let path = format!("{EPUB_DIRECTORY}/images/image-{index:04}.jpg");
+        let path = format!(
+            "{EPUB_DIRECTORY}/images/image-{index:04}.{}",
+            image.format.extension()
+        );
         write_image(&mut archive, &path, image, deflated)?;
     }
 
@@ -161,7 +164,7 @@ fn write_image(
     image: &SourceImage,
     options: SimpleFileOptions,
 ) -> Result<(), PackageError> {
-    // 入力 JPEG のバイト列を ZIP エントリへ直接ストリームする。
+    // 入力画像のバイト列を ZIP エントリへ直接ストリームする。
     // デコーダーもエンコーダーも使わないため、格納する画像のバイト列は変わらない
     let mut input = File::open(&image.path).map_err(|source| PackageError::ReadImage {
         path: image.path.clone(),
@@ -194,7 +197,7 @@ mod tests {
     use zip::{CompressionMethod, ZipArchive};
 
     use super::{MIMETYPE, write_epub};
-    use crate::{ImageDimensions, MinimalMetadata, SourceImage, generate_documents};
+    use crate::{ImageDimensions, ImageFormat, MinimalMetadata, SourceImage, generate_documents};
 
     static NEXT_TEST_DIRECTORY: AtomicUsize = AtomicUsize::new(0);
 
@@ -222,7 +225,7 @@ mod tests {
     }
 
     #[test]
-    fn stores_the_original_jpeg_bytes_without_modification() {
+    fn stores_the_original_image_bytes_without_modification() {
         let directory = TestDirectory::new();
         let images = images(directory.path());
         let documents = generate_documents(&images, &metadata()).unwrap();
@@ -235,6 +238,37 @@ mod tests {
         let mut packaged = Vec::new();
         archive
             .by_name("EPUB/images/image-0000.jpg")
+            .unwrap()
+            .read_to_end(&mut packaged)
+            .unwrap();
+
+        assert_eq!(sha256(&source), sha256(&packaged));
+    }
+
+    #[test]
+    // PNG は正規化した拡張子で格納し、入力と同じバイト列を維持する
+    fn stores_a_png_with_its_normalized_extension_without_modification() {
+        let directory = TestDirectory::new();
+        let path = directory.path().join("source.png");
+        let source = png_header(1200, 1759);
+        fs::write(&path, &source).unwrap();
+        let images = vec![SourceImage {
+            path,
+            format: ImageFormat::Png,
+            dimensions: ImageDimensions {
+                width: 1200,
+                height: 1759,
+            },
+        }];
+        let documents = generate_documents(&images, &metadata()).unwrap();
+        let output = directory.path().join("book.epub");
+
+        write_epub(&output, &images, &documents).unwrap();
+
+        let mut archive = ZipArchive::new(File::open(output).unwrap()).unwrap();
+        let mut packaged = Vec::new();
+        archive
+            .by_name("EPUB/images/image-0000.png")
             .unwrap()
             .read_to_end(&mut packaged)
             .unwrap();
@@ -281,6 +315,10 @@ mod tests {
     fn metadata() -> MinimalMetadata {
         MinimalMetadata {
             title: "Untitled".to_owned(),
+            title_file_as: None,
+            creator: None,
+            description: None,
+            publisher: None,
             identifier: "urn:uuid:00000000-0000-0000-0000-000000000000".to_owned(),
             language: "ja".to_owned(),
             modified: "2026-08-26T00:00:00Z".to_owned(),
@@ -294,6 +332,7 @@ mod tests {
 
         vec![SourceImage {
             path,
+            format: ImageFormat::Jpeg,
             dimensions: ImageDimensions {
                 width: 1200,
                 height: 1759,
@@ -308,6 +347,16 @@ mod tests {
         bytes.extend_from_slice(&width.to_be_bytes());
         bytes.extend_from_slice(&[0x03, 0x01, 0x11, 0x00, 0x02, 0x11, 0x00, 0x03, 0x11, 0x00]);
         bytes.extend_from_slice(&[0xff, 0xd9]);
+        bytes
+    }
+
+    fn png_header(width: u32, height: u32) -> Vec<u8> {
+        // IHDR を持つ最小の PNG ヘッダーを、パッケージング用の入力画像として使う
+        let mut bytes = vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
+        bytes.extend_from_slice(&13_u32.to_be_bytes());
+        bytes.extend_from_slice(b"IHDR");
+        bytes.extend_from_slice(&width.to_be_bytes());
+        bytes.extend_from_slice(&height.to_be_bytes());
         bytes
     }
 

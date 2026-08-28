@@ -1,5 +1,6 @@
 use epub_core::{
-    BuildError, BuildReport, DocumentError, ImageCollectionError, InvalidJpegReason, PackageError,
+    BuildError, BuildReport, DocumentError, ImageCollectionError, InvalidImageReason,
+    MetadataError, PackageError,
 };
 use rust_i18n::t;
 
@@ -23,6 +24,7 @@ pub fn build_succeeded(report: &BuildReport, locale: Locale) -> String {
 
 pub fn build_failed(error: &BuildError, locale: Locale) -> String {
     let message = match error {
+        BuildError::InvalidMetadata(error) => metadata_error(*error, locale),
         BuildError::CollectImages(error) => image_error(error, locale),
         BuildError::GenerateDocuments(error) => document_error(error, locale),
         BuildError::WritePackage(error) => package_error(error, locale),
@@ -42,6 +44,27 @@ pub fn build_failed(error: &BuildError, locale: Locale) -> String {
     .into_owned()
 }
 
+/// 構造化された書誌情報エラーを、表示ロケールに対応する文言へ変換する
+fn metadata_error(error: MetadataError, locale: Locale) -> String {
+    let key = match error {
+        MetadataError::EmptyTitle => "error.empty_title",
+        MetadataError::EmptyTitleFileAs => "error.empty_title_file_as",
+        MetadataError::EmptyCreatorName => "error.empty_creator_name",
+        MetadataError::EmptyCreatorFileAs => "error.empty_creator_file_as",
+        MetadataError::EmptyCreatorRole => "error.empty_creator_role",
+        MetadataError::EmptyCreatorAlternateScript => "error.empty_creator_alternate_script",
+        MetadataError::EmptyCreatorAlternateScriptLanguage => {
+            "error.empty_creator_alternate_script_language"
+        }
+        MetadataError::EmptyDescription => "error.empty_description",
+        MetadataError::EmptyPublisher => "error.empty_publisher",
+        MetadataError::EmptyLanguage => "error.empty_language",
+        MetadataError::EmptyIdentifier => "error.empty_identifier",
+    };
+
+    t!(key, locale = locale.as_str()).into_owned()
+}
+
 fn image_error(error: &ImageCollectionError, locale: Locale) -> String {
     let locale = locale.as_str();
     match error {
@@ -58,11 +81,11 @@ fn image_error(error: &ImageCollectionError, locale: Locale) -> String {
         ImageCollectionError::ReadImage { path, .. } => {
             t!("error.read_image", locale = locale, path = path.display())
         }
-        ImageCollectionError::InvalidJpeg { path, reason } => t!(
-            "error.invalid_jpeg",
+        ImageCollectionError::InvalidImage { path, reason } => t!(
+            "error.invalid_image",
             locale = locale,
             path = path.display(),
-            reason = invalid_jpeg_reason(*reason, locale)
+            reason = invalid_image_reason(*reason, locale)
         ),
         ImageCollectionError::NoImages { directory } => t!(
             "error.no_images",
@@ -73,14 +96,12 @@ fn image_error(error: &ImageCollectionError, locale: Locale) -> String {
     .into_owned()
 }
 
-fn invalid_jpeg_reason(reason: InvalidJpegReason, locale: &str) -> String {
+/// 画像形式に依存しない検証エラーを、表示ロケールに対応する文言へ変換する
+fn invalid_image_reason(reason: InvalidImageReason, locale: &str) -> String {
     let key = match reason {
-        InvalidJpegReason::MissingStartOfImage => "jpeg.missing_start_of_image",
-        InvalidJpegReason::ShortStartOfFrame => "jpeg.short_start_of_frame",
-        InvalidJpegReason::ZeroDimensions => "jpeg.zero_dimensions",
-        InvalidJpegReason::MissingStartOfFrame => "jpeg.missing_start_of_frame",
-        InvalidJpegReason::StartOfFrameAfterImageData => "jpeg.start_of_frame_after_data",
-        InvalidJpegReason::ShortSegment => "jpeg.short_segment",
+        InvalidImageReason::InvalidHeader => "image.invalid_header",
+        InvalidImageReason::InvalidDimensions => "image.invalid_dimensions",
+        InvalidImageReason::InvalidStructure => "image.invalid_structure",
     };
     t!(key, locale = locale).into_owned()
 }
@@ -126,7 +147,7 @@ fn package_error(error: &PackageError, locale: Locale) -> String {
 mod tests {
     use std::path::PathBuf;
 
-    use epub_core::{BuildError, BuildReport, ImageCollectionError};
+    use epub_core::{BuildError, BuildReport, ImageCollectionError, MetadataError};
 
     use super::{Locale, build_failed, build_succeeded};
 
@@ -155,11 +176,25 @@ mod tests {
 
         assert_eq!(
             build_failed(&error, Locale::Ja),
-            "エラー: JPEG 画像が見つかりません: images"
+            "エラー: 対応画像が見つかりません: images"
         );
         assert_eq!(
             build_failed(&error, Locale::En),
-            "Error: no JPEG images found in: images"
+            "Error: no supported images found in: images"
+        );
+    }
+
+    #[test]
+    fn translates_a_metadata_error_to_both_locales() {
+        let error = BuildError::InvalidMetadata(MetadataError::EmptyTitle);
+
+        assert_eq!(
+            build_failed(&error, Locale::Ja),
+            "エラー: 書籍のタイトルを空にすることはできません"
+        );
+        assert_eq!(
+            build_failed(&error, Locale::En),
+            "Error: book title must not be empty"
         );
     }
 }

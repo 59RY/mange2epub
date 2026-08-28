@@ -2,7 +2,7 @@
 
 ## 1. 文書の目的
 
-本書は、漫画の各ページをJPEG画像として受け取り、漫画向けFixed Layout EPUBを生成するコンバーター「manga2epub」の初期仕様・設計方針を定義する。
+本書は、漫画の各ページを画像として受け取り、漫画向けFixed Layout EPUBを生成するコンバーター「manga2epub」の初期仕様・設計方針を定義する。
 
 最初にCLIアプリケーションとして実装し、CLIおよびEPUB生成コアが十分に安定した後、同一のコアライブラリを利用するGUIアプリケーションへ発展させる。
 
@@ -22,7 +22,7 @@
 
 ## 2.1 目的
 
-JPEG形式で用意された漫画の各ページを、EPUB 3.3準拠のFixed Layout EPUBとしてパッケージングする。
+JPEG または PNG 形式で用意された漫画の各ページを、EPUB 3.3 準拠の Fixed-Layout EPUB としてパッケージングする。
 
 本ツールの主な責務は以下とする。
 
@@ -414,13 +414,14 @@ Page 6 = right
 
 ## 10.1 初期対応形式
 
-JPEGを必須対応形式とする。
+JPEGおよびPNGを必須対応形式とする。
 
 最低限、
 
 ```text
 .jpg
 .jpeg
+.png
 ```
 
 を扱えること。
@@ -429,11 +430,11 @@ JPEGを必須対応形式とする。
 
 ## 10.2 画像処理を行わない
 
-本ツールは入力JPEGについて以下を行わない。
+本ツールは入力画像について以下を行わない。
 
 - リサイズ
 - 再圧縮
-- JPEG品質変更
+- 画像品質変更
 - トリミング
 - 余白除去
 - 色補正
@@ -441,11 +442,11 @@ JPEGを必須対応形式とする。
 - 自動回転
 - アスペクト比補正
 
-EPUB内へ格納するJPEGのバイト列は、原則として入力ファイルと同一とする。
+EPUB内へ格納する画像のバイト列は、原則として入力ファイルと同一とする。
 
 ## 10.3 画像情報の参照
 
-EPUB生成に必要な範囲でJPEGの以下の情報を読み取ることは許容する。
+EPUB生成に必要な範囲で画像の以下の情報を読み取ることは許容する。
 
 - width
 - height
@@ -495,11 +496,14 @@ image-0000.jpg
 
 image-0001.jpg
 → page-0001.xhtml
+
+image-0002.png
+→ page-0002.xhtml
 ```
 
 とする。
 
-XHTMLはFixed Layout用viewportを持ち、対応するJPEG画像を1枚表示する。
+XHTMLは固定レイアウト用viewportを持ち、対応する画像を1枚表示する。
 
 画像はページ全面へ表示し、不要な余白、padding、marginを持たせない。
 
@@ -518,7 +522,7 @@ EPUB内部の画像ファイル名およびXHTMLファイル名は、入力元�
 例：
 
 ```xml
-<dc:title id="title">同人誌のタイトル</dc:title>
+<dc:title id="title">書籍のタイトル</dc:title>
 ```
 
 ## 12.2 タイトル読み
@@ -535,21 +539,19 @@ EPUB内部の画像ファイル名およびXHTMLファイル名は、入力元�
     refines="#title">ドウシンシノタイトル</meta>
 ```
 
-`file-as` は仕様上「ソート等に利用する正規化表現」であるため、内部データモデルでは単純に「ruby」などと命名せず、
+`file-as` は仕様上「ソート等に利用する正規化表現」であるため、内部データモデルでは単純に「ruby」などと命名せず、以下いずれかのように意味を分離する。
 
 ```text
 title
 title_file_as
 ```
 
-または、
+or
 
 ```text
 display
 file_as
 ```
-
-のように意味を分離する。
 
 GUI上では「タイトル読み」と表示してもよい。
 
@@ -563,7 +565,7 @@ GUI上では「タイトル読み」と表示してもよい。
 <dc:creator id="creator1">祐天寺</dc:creator>
 ```
 
-著者の役割として、
+著者の役割として、以下を設定可能とする。
 
 ```xml
 <meta
@@ -572,20 +574,13 @@ GUI上では「タイトル読み」と表示してもよい。
     scheme="marc:relators">aut</meta>
 ```
 
-を設定可能とする。
+漫画では作者が作画も行う場合があるため、将来的には複数 role を許容できるデータモデルが望ましい。
 
-漫画では作者が作画も行う場合があるため、将来的には複数roleを許容できるデータモデルが望ましい。
+例えば、`aut`、`ill` を同一 creator へ設定可能にする余地を残す。
 
-例えば、
+初期実装では、著者は任意の 1 名とし、役割を省略した場合は `aut` を使用する。
 
-```text
-aut
-ill
-```
-
-を同一creatorへ設定可能にする余地を残す。
-
-初期バージョンでは `aut` のみでもよい。
+複数著者・複数 role は、内部データモデルと CLI の利用例を確定してから追加する。
 
 ## 12.4 著者読み
 
@@ -603,7 +598,7 @@ ill
 
 必要に応じて著者名等へ別script表現を設定可能とする。
 
-カタカナ表現には例えば、
+カタカナ表現には例えば、以下を検討する。
 
 ```xml
 <meta
@@ -612,9 +607,7 @@ ill
     xml:lang="ja-Kana">ユウテンジ</meta>
 ```
 
-を検討する。
-
-ローマ字転写の場合は、
+ローマ字転写の場合は、以下のような表現を第一候補とする。
 
 ```xml
 <meta
@@ -623,15 +616,13 @@ ill
     xml:lang="ja-Latn">Yūtenji</meta>
 ```
 
-のような表現を第一候補とする。
-
-`alternate-script` は必須ではない。
-
-`file-as` と `alternate-script` は別用途なので、内部データモデルでも区別する。
+- `alternate-script` は必須ではない。
+- `file-as` と `alternate-script` は別用途なので、内部データモデルでも区別する。
+- 初期実装では著者名にのみ対応し、値を指定する場合は `xml:lang` に対応する言語タグも指定する。
 
 ## 12.6 Description
 
-Descriptionを任意指定可能とする。
+Description を任意指定可能とする。
 
 例：
 
@@ -639,9 +630,9 @@ Descriptionを任意指定可能とする。
 <dc:description>ここで指定した値がPlay Booksで表示されることを期待する。</dc:description>
 ```
 
-Google Play Booksでの表示を主要な利用目的の一つとする。
+Google Play Books での表示を主要な利用目的の 1 つとする。
 
-実際の表示についてはReading SystemおよびGoogle側の実装に依存するため、結合テストで確認する。
+実際の表示についてはビューアー側の仕組み および Google側の実装に依存するため、結合テストで確認する。
 
 ## 12.7 Publisher
 
@@ -663,15 +654,17 @@ Google Play Booksでの表示を主要な利用目的の一つとする。
 <dc:language>ja</dc:language>
 ```
 
-設定ファイルから変更可能にする。
+CLIオプションから変更可能にする。
+
+設定ファイル導入後も、同じ意味の値を指定可能にする。
 
 ## 12.9 Identifier
 
 利用者による指定を可能とする。
 
-指定された場合は、その値をPrimary Identifierとして利用する。
+指定された場合は、その値を Primary Identifier として利用する。
 
-指定がない場合はUUIDを自動生成する。
+指定がない場合は UUID を自動生成する。
 
 自動生成例：
 
@@ -691,15 +684,16 @@ Google Play Booksでの表示を主要な利用目的の一つとする。
 
 とする。
 
-利用者が任意IDを設定した場合も、EPUBとして一意なIdentifierとなる文字列として扱う。
+利用者が任意 ID を設定した場合も、EPUB として一意な Identifier となる文字列として扱う。
 
-URI/URNの組み立て方については、設定値をそのまま利用する方式と、ツール側で `urn:` を付加する方式を混在させない。
+URI/URN の組み立て方については、設定値をそのまま利用する方式と、ツール側で `urn:` を付加する方式を混在させない。
 
-設定スキーマ確定時に明示する。
+CLI オプションおよび将来の設定ファイルでは、指定値をそのまま利用する。
+ツール側で `urn:` などの接頭辞を補わない。
 
 ## 12.10 modified
 
-EPUB 3.3で必要な、
+EPUB 3.3 で必要な、
 
 ```xml
 <meta property="dcterms:modified">
@@ -709,14 +703,14 @@ EPUB 3.3で必要な、
 
 を生成する。
 
-日時はEPUB生成時のUTC時刻から生成する。
+日時は EPUB 生成時の UTC 時刻から生成する。
 値は秒精度の `YYYY-MM-DDThh:mm:ssZ` 形式とし、1 秒未満の端数を含めない。
 
 再現可能ビルドを将来必要とする場合は、明示指定可能にする余地を残す。
 
 ---
 
-# 13. 旧EPUB 3.0時代の互換メタデータ
+# 13. 互換メタデータ
 
 過去に利用していた以下のようなメタデータは、EPUB 3.3標準出力では原則として生成しない。
 
@@ -727,7 +721,6 @@ EPUB 3.3で必要な、
 <meta content="comic" name="book-type"/>
 <meta content="horizontal-rl" name="primary-writing-mode"/>
 <meta content="#ffffff" name="SpineColor"/>
-<meta name="cover" content="cover"/>
 ```
 
 理由は、これらがEPUB 3.3 CoreにおけるFixed Layoutの基本表現ではないためである。
@@ -759,15 +752,21 @@ page-progression-direction="rtl"
 
 を利用する。
 
-将来的に特定Reading System向け互換性が必要と判明した場合のみ、
+特定のビューア向け互換性が必要と判明した場合のみ **compatibility profile** として追加する。ベンダー固有メタデータを標準動作へ混在させないこと。
 
-```text
-compatibility profile
+## 13.1 表紙の旧仕様互換
+
+表紙画像は、EPUB 3.3 の標準である manifest の `cover-image` プロパティで指定する。
+
+Finder の Quick Look を含む旧仕様の表紙参照にも対応するため、標準出力では次も生成する。
+
+```xml
+<meta name="cover" content="image-0000"/>
 ```
 
-として追加する。
+`content` の値は、表紙画像を表す manifest item の `id` と一致させる。
 
-ベンダー固有メタデータを標準動作へ混在させないこと。
+このメタデータは EPUB 2 互換のための限定的な例外であり、他の旧仕様・ベンダー固有メタデータを追加する根拠にはしない。
 
 ---
 
@@ -909,6 +908,9 @@ book.yaml
 
 とする。
 
+`book.yaml` は推奨する標準ファイル名であり、CLIが現在のディレクトリから自動検出することはしない。
+YAMLを使う場合は、利用者が設定ファイルへのパスを明示する。
+
 ## 18.2 方針
 
 CLI引数だけで全書誌情報・全ページ指定を行わせない。
@@ -927,8 +929,8 @@ GUI化した場合も、GUIの内部データモデルとYAMLを極力共通化�
 version: 1
 
 book:
-  title: "同人誌のタイトル"
-  title_file_as: "ドウシンシノタイトル"
+  title: "書籍のタイトル"
+  title_file_as: "ショセキノタイトル"
 
   language: "ja"
 
@@ -1063,7 +1065,7 @@ page: 1
 
 ### デフォルト
 
-ユーザーによる明示指定がない場合、入力ディレクトリ内のJPEGをファイル名の昇順で読み込む。
+ユーザーによる明示指定がない場合、入力ディレクトリ内の対応画像をファイル名の昇順で読み込む。
 
 数値部分は自然順で比較する。
 
@@ -1115,25 +1117,51 @@ images:
 
 実行ファイル名およびCLIコマンド名は `manga2epub` とする。
 
-## 21.1 最小ビルド
+## 21.1 EPUB生成
 
 ```bash
-manga2epub build
+manga2epub build ./images --output ./book.epub --title "書籍のタイトル"
 ```
 
-現在ディレクトリの `book.yaml` を読み取る。
+`<image_directory>`、`--output`、`--title` を指定して EPUB を生成する。
 
-## 21.2 設定ファイル指定
+画像ディレクトリ内の対応画像を自然順でページとして扱う。
+
+## 21.2 メタデータ指定
+
+タイトル以外のメタデータは、必要に応じて CLI オプションで指定する。
+
+```bash
+manga2epub build ./images \\
+  --output ./book.epub \\
+  --title "書籍のタイトル" \\
+  --title-file-as "ショセキノタイトル" \\
+  --creator "著者名" \\
+  --creator-file-as "チョシャメイ" \\
+  --creator-role aut \\
+  --creator-alternate-script "チョシャメイ" \\
+  --creator-alternate-script-language ja-Kana \\
+  --description "紹介文" \\
+  --publisher "発行元" \\
+  --language ja \\
+  --identifier "urn:uuid:12345678-abcd-1234-ef00-123456789abc"
+```
+
+- `--language` の既定値は `ja` とする。
+- `--identifier` を省略した場合は `urn:uuid:` 形式のUUIDを自動生成する。
+- `--creator-role` を省略した場合は `aut` とする。
+- `--creator-alternate-script` を指定する場合は、
+- `--creator-alternate-script-language` も指定する。
+
+## 21.3 設定ファイル指定
+
+設定ファイルは、CLIオプションと同じメタデータを繰り返し指定する負担を減らすために導入する。
 
 ```bash
 manga2epub build ./book.yaml
 ```
 
-## 21.3 出力先
-
-```bash
-manga2epub build ./book.yaml --output ./book.epub
-```
+設定ファイルを導入するまでは、この形式を受け付けない。
 
 ## 21.4 初期設定生成
 
@@ -1147,15 +1175,13 @@ manga2epub init
 
 ## 21.5 検査
 
-将来的に、
+将来的に、以下のような形を提供してよい。
 
 ```bash
 manga2epub check ./book.epub
 ```
 
-を提供してよい。
-
-ただしEPUBCheckそのものをRustで再実装しない。
+ただし EPUBCheck そのものを Rust で再実装しない。
 
 ## 21.6 inspect
 
@@ -1165,10 +1191,10 @@ manga2epub check ./book.epub
 manga2epub inspect ./book.epub
 ```
 
-で、
+で、以下のような情報を表示できると便利である。
 
 ```text
-Title: 同人誌のタイトル
+Title: 書籍のタイトル
 Creator: 祐天寺
 Pages: 52
 Direction: RTL
@@ -1178,11 +1204,9 @@ Cover: image-0000.jpg
 TOC entries: 3
 ```
 
-などを表示できると便利である。
-
 初期リリース必須機能ではない。
 
-## 21.7 既存EPUB編集
+## 21.7 既存 EPUB 編集
 
 将来的に、
 
@@ -1190,11 +1214,10 @@ TOC entries: 3
 manga2epub edit ./book.epub
 ```
 
-のような既存EPUB編集機能を提供できると便利である。
+のような既存 EPUB 編集機能を提供できると便利である。
 
 ただし、これは最低優先度の機能とする。
-
-初期段階では、既存EPUBの読み込み・編集・再パッケージングを実装しない。
+初期段階では、既存 EPUB の読み込み・編集・再パッケージングを実装しない。
 
 ## 21.8 表示ロケール
 
@@ -1301,7 +1324,8 @@ Tauriも依存させない。
 CLIは以下のみを担当する。
 
 - コマンドライン引数解析
-- YAML読込
+- CLI オプションからの入力値の組み立て
+- YAML 読み込み（設定ファイル入力を提供する場合）
 - ユーザー向けエラー表示
 - WARNING表示
 - `epub-core` 呼び出し
@@ -1335,7 +1359,7 @@ UTF-8を前提とする。
 
 # 26. ファイル順序
 
-画像ファイルの読込順は決定論的でなければならない。
+画像ファイルの読み込み順は決定論的でなければならない。
 
 ファイルシステムが返した順序をそのまま利用しない。
 
@@ -1363,7 +1387,7 @@ image-10.jpg
 
 の順とする。
 
-zero paddingされたファイル名も引き続き推奨する。
+ゼロ埋めされたファイル名も引き続き推奨する。
 
 ```text
 image-0000.jpg
@@ -1373,32 +1397,30 @@ image-0002.jpg
 
 ## 26.2 明示的な順序指定
 
-ユーザーが1ファイル単位で順番を指定した場合は、その順序を優先する。
+ユーザーが 1 ファイル単位で順番を指定した場合は、その順序を優先する。
 
-この機能はCLI/YAMLで利用可能な設計とし、将来のGUIでは特に重要な機能として扱う。
+この機能は CLI/YAML で利用可能な設計とし、将来のGUIでは特に重要な機能として扱う。
 
-GUIでは、画像のドラッグ＆ドロップ等によってページ順を変更し、その結果を内部データモデルおよびYAMLへ保存できることが望ましい。
+GUI では、画像のドラッグ＆ドロップ等によってページ順を変更し、その結果を内部データモデルおよび YAML へ保存できることが望ましい。
 
 明示指定時に、指定されていない画像をどう扱うかは以下のいずれかとする。
 
 - 未指定画像をエラーとする
 - 未指定画像を自動順序で末尾へ追加する
 
-この選択は、最終的なYAMLスキーマ確定時に決定する。
+この選択は、最終的な YAML スキーマ確定時に決定する。
 
-## 26.3 EPUB内部名
+## 26.3 EPUB 内部名
 
-EPUB内部では、入力元のファイル名を維持する必要はない。
+EPUB 内部では、入力元のファイル名を維持する必要はない。
 
-ページ順に基づく正規化名を使用する。
+ページ順に基づく正規化名を使用する。下記のような形式を第一候補とする。
 
 ```text
 images/image-0000.jpg
 images/image-0001.jpg
 images/image-0002.jpg
 ```
-
-などの形式を第一候補とする。
 
 ---
 
@@ -1415,7 +1437,7 @@ images/image-0002.jpg
 - 明示された画像ファイルが存在しない
 - 明示された画像順序に同一ファイルが重複している
 - EPUB生成先へ書き込めない
-- JPEGとして読み取れない入力
+- 対応画像として読み取れない入力
 
 ## 警告候補
 
@@ -1430,7 +1452,7 @@ images/image-0002.jpg
 
 ## 27.1 縦横比不一致の扱い
 
-JPEGの縦横比不一致はWARNINGとする。
+画像の縦横比不一致はWARNINGとする。
 
 少なくとも初期仕様では、縦横比不一致をERRORにしない。
 
@@ -1516,19 +1538,19 @@ page-10.jpg
 
 `nav.xhtml` の目次項目が正しいXHTMLへリンクすること。
 
-## 28.4 JPEG無加工テスト
+## 28.4 画像無加工テスト
 
-重要な品質条件として、入力JPEGとEPUB内JPEGのSHA-256を比較する。
+重要な品質条件として、入力画像とEPUB内画像のSHA-256を比較する。
 
 ```text
-SHA256(input JPEG)
+SHA256(input image)
 ==
-SHA256(JPEG extracted from EPUB)
+SHA256(image extracted from EPUB)
 ```
 
 となること。
 
-これにより、本ツールがJPEGを再圧縮・改変していないことを自動テストする。
+これにより、本ツールが入力画像を再圧縮・改変していないことを自動テストする。
 
 ## 28.5 Warning Test
 
@@ -1612,6 +1634,7 @@ Page 3 = left
 - language
 - identifier
 - UUID auto generation
+- PNG input support
 
 ## Phase 3 — YAML
 
@@ -1668,8 +1691,8 @@ GUIでEPUB生成ロジックを再実装しない。
 
 以下はスコープ外とする。
 
-- JPEG自動縮小
-- JPEG圧縮率変更
+- 画像の自動縮小
+- 画像圧縮率変更
 - 画像フォーマット変換
 - 自動トリミング
 - 自動余白除去
@@ -1843,13 +1866,13 @@ Later:
 
 - Cargo Workspaceの初期構築
 - 基本データモデルの追加
-- JPEG列挙と自然順ソート
+- 画像列挙と自然順ソート
 - ページ配置ロジックとテスト
 - OCF/ZIP生成
 - OPF生成
 - XHTML生成
 - Navigation Document生成
-- YAML設定読込
+- YAML設定読み込み
 - CLI commandの追加
 
 一方、以下のように複数の大きな責務を一度に実装することは原則として避ける。
@@ -1936,7 +1959,7 @@ ZIP crate
 UUID crate
   identifier generation
 
-JPEG metadata reader
+JPEG / PNG metadata reader
   width / height acquisition
 ```
 
@@ -1990,7 +2013,7 @@ Manga EPUB Packager
 - 明示順序に含まれない画像をエラーとするか、自動順序で末尾へ追加するか
 - natural sortの詳細仕様
 - viewportの正確な決定方法
-- JPEG縦横比不一致のWARNING閾値
+- 画像縦横比不一致のWARNING閾値
 - 数ピクセル程度の差を許容するか
 - 縦横比の差を絶対値・相対値のどちらで判定するか
 - center配置画像の縦横比WARNING扱い
@@ -1998,7 +2021,6 @@ Manga EPUB Packager
 - `rendition:orientation` を明示出力するか
 - `rendition:page-spread-left/right` と非prefix版を併記する互換モード
 - NCX互換出力
-- EPUB 2 `meta name="cover"` 互換出力
 - GUIフレームワークの最終決定
 - 使用するRust crate
 - CI/CD構成
@@ -2012,11 +2034,11 @@ Manga EPUB Packager
 - プロジェクト名は `manga2epub`
 - CLIコマンド名は `manga2epub`
 - `book.yaml` は本書の初期案を基礎として進める
-- EPUB内部で元JPEGファイル名を維持しない
+- EPUB内部で元の入力ファイル名を維持しない
 - 明示指定がない場合はファイル名の自然順で読み込む
 - 明示的な1ファイル単位のページ順指定を将来サポートする
 - `rendition:spread` の標準値は `landscape`
-- JPEG縦横比不一致はWARNINGとし、少なくとも初期仕様ではERRORにしない
+- 画像縦横比不一致はWARNINGとし、少なくとも初期仕様ではERRORにしない
 - 既存EPUB編集機能は最低優先度とする
 
 未決定事項を実装者の独断で固定仕様にしない。
@@ -2029,7 +2051,7 @@ Manga EPUB Packager
 
 1. macOS上でCLIとして動作する。
 2. CLIコマンド名が `manga2epub` である。
-3. JPEG群からEPUB 3.3 Fixed Layoutを生成できる。
+3. JPEGまたはPNGの画像群からEPUB 3.3 固定レイアウトを生成できる。
 4. 1ページ目が表紙になる。
 5. RTL漫画としてページが進行する。
 6. 2ページ目以降がデフォルトでright/left交互になる。
@@ -2044,12 +2066,12 @@ Manga EPUB Packager
 15. Identifierを指定できる。
 16. Identifier未指定時はUUIDを生成する。
 17. 目次を指定できる。
-18. 入力JPEGを再圧縮・加工しない。
+18. 入力画像を再圧縮・加工しない。
 19. 縦横比不一致をWARNINGとして通知できる。
 20. 縦横比不一致によって通常のEPUB生成を失敗させない。
 21. EPUBCheckで重大なエラーがない。
 22. Apple Booksで正常に開ける。
-23. Google Play BooksでFixed Layout漫画として実用可能な表示になる。
+23. Google Play Booksで固定レイアウト漫画として実用可能な表示になる。
 24. EPUB生成処理がCLIから分離されたRustライブラリになっている。
 25. 将来のGUIで1ファイル単位のページ順指定を扱えるデータモデルになっている。
 
