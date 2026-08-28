@@ -199,11 +199,10 @@ fn read_jpeg_dimensions(path: &Path) -> Result<ImageDimensions, ImageCollectionE
                 return Err(invalid_image(path, InvalidImageReason::InvalidStructure));
             }
             let _precision = read_byte(&mut reader, path)?;
-            return dimensions_or_error(
-                path,
-                read_u16(&mut reader, path)? as u32,
-                read_u16(&mut reader, path)? as u32,
-            );
+            // JPEG の SOF は、精度の直後に高さ、幅の順で寸法を格納する
+            let height = u32::from(read_u16(&mut reader, path)?);
+            let width = u32::from(read_u16(&mut reader, path)?);
+            return dimensions_or_error(path, width, height);
         }
         match marker {
             0xd9 | 0xda => return Err(invalid_image(path, InvalidImageReason::InvalidStructure)),
@@ -432,6 +431,13 @@ mod tests {
         );
         assert_eq!(images[0].format, ImageFormat::Png);
         assert_eq!(images[1].format, ImageFormat::Jpeg);
+        assert_eq!(
+            images[1].dimensions,
+            ImageDimensions {
+                width: 1200,
+                height: 1800
+            }
+        );
         assert_eq!(
             images[0].dimensions,
             ImageDimensions {
