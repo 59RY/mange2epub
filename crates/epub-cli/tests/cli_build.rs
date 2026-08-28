@@ -97,6 +97,62 @@ fn builds_the_png_fixture_with_the_specified_identifier() {
     );
 }
 
+// YAML 設定ファイルから EPUB を生成し、複数の著者情報と相対出力先を検証する
+#[test]
+fn builds_the_png_fixture_from_a_yaml_configuration_file() {
+    let directory = TestDirectory::new();
+    let configuration_path = directory.path().join("book.yaml");
+    let input_directory = fixture_directory("png_only");
+    let output_path = directory.path().join("book.epub");
+    std::fs::write(
+        &configuration_path,
+        format!(
+            r#"version: 1
+output: book.epub
+book:
+  title: YAML integration fixture
+  creators:
+    - name: test
+      roles:
+        - aut
+        - edt
+      alternate_scripts:
+        - lang: ja-Kana
+          value: テスト
+    - name: editor
+  language: ja
+images:
+  directory: {}
+"#,
+            yaml_string(&input_directory)
+        ),
+    )
+    .unwrap();
+
+    let status = Command::new(env!("CARGO_BIN_EXE_manga2epub"))
+        .args(["build", "--config"])
+        .arg(&configuration_path)
+        .status()
+        .unwrap();
+
+    assert!(status.success());
+
+    let package = read_package_document(&output_path);
+    assert!(package.contains("<dc:title id=\"title\">YAML integration fixture</dc:title>"));
+    assert!(package.contains("<dc:creator id=\"creator-0000\">test</dc:creator>"));
+    assert!(package.contains(
+        "<meta property=\"role\" refines=\"#creator-0000\" scheme=\"marc:relators\">aut</meta>"
+    ));
+    assert!(package.contains(
+        "<meta property=\"role\" refines=\"#creator-0000\" scheme=\"marc:relators\">edt</meta>"
+    ));
+    assert!(package.contains(
+        "<meta property=\"alternate-script\" refines=\"#creator-0000\" xml:lang=\"ja-Kana\">テスト</meta>"
+    ));
+    assert!(package.contains("<dc:creator id=\"creator-0001\">editor</dc:creator>"));
+    assert_generated_uuid_identifier(&package);
+}
+
 // 指定した fixture と CLI オプションから EPUB を生成し、OPF パッケージ文書を読み取る
 fn build_fixture(
     output_directory: &Path,
@@ -156,6 +212,16 @@ fn fixture_directory(name: &str) -> PathBuf {
         .join("tests")
         .join("fixtures")
         .join(name)
+}
+
+// YAML のダブルクォート文字列として、安全にパスを埋め込む
+fn yaml_string(path: &Path) -> String {
+    format!(
+        "\"{}\"",
+        path.to_string_lossy()
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"")
+    )
 }
 
 // 生成した EPUB から OPF パッケージ文書を UTF-8 テキストとして読み取る

@@ -4,7 +4,7 @@ use epub_core::{
 };
 use rust_i18n::t;
 
-use crate::Locale;
+use crate::{ApplicationError, Locale, config::ConfigError};
 
 pub fn build_succeeded(report: &BuildReport, locale: Locale) -> String {
     let key = if report.page_count == 1 {
@@ -22,8 +22,23 @@ pub fn build_succeeded(report: &BuildReport, locale: Locale) -> String {
     .into_owned()
 }
 
-pub fn build_failed(error: &BuildError, locale: Locale) -> String {
+pub fn build_failed(error: &ApplicationError, locale: Locale) -> String {
     let message = match error {
+        ApplicationError::Config(error) => config_error(error, locale),
+        ApplicationError::Build(error) => core_build_error(error, locale),
+    };
+
+    t!(
+        "error.with_prefix",
+        locale = locale.as_str(),
+        message = message
+    )
+    .into_owned()
+}
+
+/// EPUB コアから返されたエラーを、表示ロケールに対応する文言へ変換する
+fn core_build_error(error: &BuildError, locale: Locale) -> String {
+    match error {
         BuildError::InvalidMetadata(error) => metadata_error(*error, locale),
         BuildError::CollectImages(error) => image_error(error, locale),
         BuildError::GenerateDocuments(error) => document_error(error, locale),
@@ -34,13 +49,30 @@ pub fn build_failed(error: &BuildError, locale: Locale) -> String {
         BuildError::FormatModifiedTime(_) => {
             t!("error.format_modified", locale = locale.as_str()).into_owned()
         }
-    };
+    }
+}
 
-    t!(
-        "error.with_prefix",
-        locale = locale.as_str(),
-        message = message
-    )
+/// YAML 設定ファイルに固有のエラーを、表示ロケールに対応する文言へ変換する
+fn config_error(error: &ConfigError, locale: Locale) -> String {
+    let locale = locale.as_str();
+    match error {
+        ConfigError::Read { path, .. } => t!(
+            "error.read_configuration",
+            locale = locale,
+            path = path.display()
+        ),
+        ConfigError::Parse { path, .. } => t!(
+            "error.parse_configuration",
+            locale = locale,
+            path = path.display()
+        ),
+        ConfigError::UnsupportedVersion { path, version } => t!(
+            "error.unsupported_configuration_version",
+            locale = locale,
+            path = path.display(),
+            version = version
+        ),
+    }
     .into_owned()
 }
 
@@ -149,6 +181,8 @@ mod tests {
 
     use epub_core::{BuildError, BuildReport, ImageCollectionError, MetadataError};
 
+    use crate::{ApplicationError, config::ConfigError};
+
     use super::{Locale, build_failed, build_succeeded};
 
     #[test]
@@ -170,9 +204,10 @@ mod tests {
 
     #[test]
     fn translates_a_core_error_to_both_locales() {
-        let error = BuildError::CollectImages(ImageCollectionError::NoImages {
-            directory: PathBuf::from("images"),
-        });
+        let error =
+            ApplicationError::Build(BuildError::CollectImages(ImageCollectionError::NoImages {
+                directory: PathBuf::from("images"),
+            }));
 
         assert_eq!(
             build_failed(&error, Locale::Ja),
@@ -185,8 +220,25 @@ mod tests {
     }
 
     #[test]
+    fn translates_a_configuration_error_to_both_locales() {
+        let error = ApplicationError::Config(ConfigError::UnsupportedVersion {
+            path: PathBuf::from("book.yaml"),
+            version: 2,
+        });
+
+        assert_eq!(
+            build_failed(&error, Locale::Ja),
+            "エラー: 未対応の設定ファイルバージョンです: 2 (book.yaml)"
+        );
+        assert_eq!(
+            build_failed(&error, Locale::En),
+            "Error: unsupported configuration file version: 2 (book.yaml)"
+        );
+    }
+
+    #[test]
     fn translates_a_metadata_error_to_both_locales() {
-        let error = BuildError::InvalidMetadata(MetadataError::EmptyTitle);
+        let error = ApplicationError::Build(BuildError::InvalidMetadata(MetadataError::EmptyTitle));
 
         assert_eq!(
             build_failed(&error, Locale::Ja),
