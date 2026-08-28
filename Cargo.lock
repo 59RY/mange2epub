@@ -311,6 +311,8 @@ dependencies = [
  "epub-core",
  "rust-i18n",
  "sys-locale",
+ "uuid",
+ "zip",
 ]
 
 [[package]]
