@@ -607,19 +607,25 @@ YAML を採用する。ファイル名のデフォルトは `book.yaml` とす�
 
 CLI 引数だけで全書誌情報・全ページ指定を行わせない。CLI は簡単な操作に使い、複雑な書籍設定は YAML へ記述する。GUI 化した場合も、GUI の内部データモデルと YAML を極力共通化する。
 
+利用者向けの CLI 引数一覧と `book.yaml` の記述例は、`docs/CLI_USAGE.md` にまとめる。
+
 ---
 
-# 19. book.yaml 初期案
+# 19. book.yaml
 
-以下のスキーマで進める。
+`book.yaml` バージョン 1 で受け付ける設定ファイルのスキーマは以下とする。
 
 ```yaml
 version: 1
+
+# 設定ファイルからの相対パスで指定する
+output: "./book.epub"
 
 book:
   title: "書籍のタイトル"
   title_file_as: "ショセキノタイトル"
 
+  # 省略時は ja
   language: "ja"
 
   description: |
@@ -627,7 +633,7 @@ book:
 
   publisher: "Yūtenji Publishers"
 
-  # 未指定なら UUID を生成
+  # 省略または null なら UUID を生成
   identifier: null
 
   creators:
@@ -644,43 +650,18 @@ book:
         - lang: "ja-Latn"
           value: "Yūtenji"
 
-layout:
-  direction: rtl
-  spread: landscape
-  orientation: auto
-
 images:
+  # 設定ファイルからの相対パスで指定する
   directory: "./images"
-
-pages:
-  cover: first
-
-  auto:
-    first_after_cover: right
-    alternate: true
-
-  overrides:
-    - page: 4
-      placement: center
-
-    - page: 12
-      placement: left
-
-    - page: 13
-      placement: right
-
-toc:
-  - title: "第1話"
-    page: 2
-
-  - title: "第2話"
-    page: 24
-
-  - title: "あとがき"
-    page: 50
 ```
 
-`layout.spread` の標準値は `landscape` とする。
+`version`、`output`、`book.title`、`images.directory` は必須とする。`book` のそれ以外の項目は任意とし、`creators`、`roles`、`alternate_scripts` はそれぞれ複数指定できる。
+
+`output` と `images.directory` の相対パスは、設定ファイル自身の親ディレクトリを基準に解決する。例えば `config/book.yaml` 内の `./images` は `config/images` を指す。
+
+このバージョンでは未知のキーをエラーとする。入力の誤記を見落とさずに検出するためである。
+
+`layout`、`pages`、`toc`、画像の明示順序は、対応する機能と同時に追加する。現在のバージョンではこれらのキーを受け付けない。ページ指定の設計は [#20](#20-ページ指定スキーマの考え方)、明示順序の設計は [#26](#26-ファイル順序) を参照する。
 
 ---
 
@@ -781,13 +762,13 @@ manga2epub build ./images \
 
 ## 21.3 設定ファイル指定
 
-設定ファイルは、CLI オプションで同じメタデータを繰り返し指定する負担を減らすために導入する。
+設定ファイルを用いてメタデータを指定可能にする。これにより、CLI オプションで同じメタデータを都度指定する記述コストを削減する。
 
 ```bash
-manga2epub build ./book.yaml
+manga2epub build --config ./book.yaml
 ```
 
-設定ファイルを導入するまでは、この形式を受け付けない。
+`--config` を指定する場合は、画像ディレクトリ、`--output`、`--title`、その他の書誌情報 CLI 引数を同時に指定できない。設定ファイルと CLI 引数のどちらを優先するかを曖昧にしないためである。
 
 ## 21.4 初期設定生成
 
@@ -863,6 +844,7 @@ OS から取得した言語に対応していない場合も英語を使う。
 │   └── fixtures/
 │
 ├── docs/
+│   ├── CLI_USAGE.md
 │   └── PROJECT_SPEC.md
 │
 └── README.md
@@ -1077,7 +1059,7 @@ EPUB 3.3 固定レイアウト
 
 ## Phase 3 — YAML
 
-`book.yaml` を実装する。
+`book.yaml` を実装する。初期スキーマでは書誌情報、出力先、入力画像ディレクトリを扱う。
 
 ## Phase 4 — Page customization
 
