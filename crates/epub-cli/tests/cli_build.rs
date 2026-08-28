@@ -90,9 +90,11 @@ fn builds_the_png_fixture_with_the_specified_identifier() {
         "ピングインテグレーションフィクスチャ",
         "PNG 書籍が正しく作成されているかどうかのテストです。",
     );
-    assert!(package.contains(
-        "<dc:identifier id=\"pub-id\">urn:test:59RY.manga2epub.integrationTest.pngFixture</dc:identifier>"
-    ));
+    assert!(
+        package.contains(
+            "<dc:identifier id=\"pub-id\">urn:test:59RY.manga2epub.integrationTest.pngFixture</dc:identifier>"
+        )
+    );
 }
 
 // 指定した fixture と CLI オプションから EPUB を生成し、OPF パッケージ文書を読み取る
@@ -127,9 +129,11 @@ fn assert_common_metadata(package: &str, title: &str, title_file_as: &str, descr
     assert!(package.contains(
         "<meta property=\"role\" refines=\"#creator\" scheme=\"marc:relators\">aut</meta>"
     ));
-    assert!(package.contains(
-        "<meta property=\"alternate-script\" refines=\"#creator\" xml:lang=\"ja-kana-jp\">テスト</meta>"
-    ));
+    assert!(
+        package.contains(
+            "<meta property=\"alternate-script\" refines=\"#creator\" xml:lang=\"ja-kana-jp\">テスト</meta>"
+        )
+    );
     assert!(package.contains(&format!("<dc:description>{description}</dc:description>")));
     assert!(package.contains("<dc:publisher>Test Publishers</dc:publisher>"));
     assert!(package.contains("<dc:language>ja</dc:language>"));

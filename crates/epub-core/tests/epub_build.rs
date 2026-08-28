@@ -84,9 +84,11 @@ fn assert_fixture_build(
         } else {
             ""
         };
-        assert!(package.contains(&format!(
-            "<item id=\"image-{index:04}\" href=\"{image_path}\" media-type=\"{media_type}\"{properties}/>"
-        )));
+        assert!(
+            package.contains(&format!(
+                "<item id=\"image-{index:04}\" href=\"{image_path}\" media-type=\"{media_type}\"{properties}/>"
+            ))
+        );
 
         let source = fs::read(input_directory.join(source_name)).unwrap();
         let packaged = read_archive_bytes(&mut archive, &format!("EPUB/{image_path}"));
