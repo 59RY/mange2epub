@@ -8,7 +8,7 @@ use std::{error::Error, fmt};
 pub struct PublicationMetadata {
     pub title: String,
     pub title_file_as: Option<String>,
-    pub creator: Option<CreatorMetadata>,
+    pub creators: Vec<CreatorMetadata>,
     pub description: Option<String>,
     pub publisher: Option<String>,
     pub language: String,
@@ -17,13 +17,13 @@ pub struct PublicationMetadata {
 
 /// 1名の著者に関する書誌情報
 ///
-/// 複数著者や複数の役割は、利用例と入力形式を確定してから追加する。
+/// 複数の役割と別表記は、それぞれ指定した順序で EPUB へ出力する。
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CreatorMetadata {
     pub name: String,
     pub file_as: Option<String>,
-    pub role: Option<String>,
-    pub alternate_script: Option<AlternateScript>,
+    pub roles: Vec<String>,
+    pub alternate_scripts: Vec<AlternateScript>,
 }
 
 /// 著者名の別の文字体系による表記
@@ -55,7 +55,7 @@ impl PublicationMetadata {
         Self {
             title,
             title_file_as: None,
-            creator: None,
+            creators: Vec::new(),
             description: None,
             publisher: None,
             language: "ja".to_owned(),
@@ -74,7 +74,7 @@ impl PublicationMetadata {
         require_value(&self.language, MetadataError::EmptyLanguage)?;
         require_optional_value(&self.identifier, MetadataError::EmptyIdentifier)?;
 
-        if let Some(creator) = &self.creator {
+        for creator in &self.creators {
             creator.validate()?;
         }
 
@@ -87,9 +87,11 @@ impl CreatorMetadata {
     fn validate(&self) -> Result<(), MetadataError> {
         require_value(&self.name, MetadataError::EmptyCreatorName)?;
         require_optional_value(&self.file_as, MetadataError::EmptyCreatorFileAs)?;
-        require_optional_value(&self.role, MetadataError::EmptyCreatorRole)?;
+        for role in &self.roles {
+            require_value(role, MetadataError::EmptyCreatorRole)?;
+        }
 
-        if let Some(alternate_script) = &self.alternate_script {
+        for alternate_script in &self.alternate_scripts {
             require_value(
                 &alternate_script.value,
                 MetadataError::EmptyCreatorAlternateScript,
@@ -158,7 +160,7 @@ mod tests {
         let metadata = PublicationMetadata::new("書籍のタイトル".to_owned());
 
         assert_eq!(metadata.language, "ja");
-        assert_eq!(metadata.creator, None);
+        assert!(metadata.creators.is_empty());
         assert!(metadata.validate().is_ok());
     }
 
@@ -213,7 +215,7 @@ mod tests {
 
         for (creator, expected_error) in cases {
             let mut metadata = PublicationMetadata::new("書籍のタイトル".to_owned());
-            metadata.creator = Some(creator);
+            metadata.creators = vec![creator];
 
             assert_eq!(metadata.validate(), Err(expected_error));
         }
@@ -264,8 +266,8 @@ mod tests {
         CreatorMetadata {
             name: String::new(),
             file_as: None,
-            role: None,
-            alternate_script: None,
+            roles: Vec::new(),
+            alternate_scripts: Vec::new(),
         }
     }
 
@@ -274,8 +276,8 @@ mod tests {
         CreatorMetadata {
             name: "著者名".to_owned(),
             file_as: Some(" ".to_owned()),
-            role: None,
-            alternate_script: None,
+            roles: Vec::new(),
+            alternate_scripts: Vec::new(),
         }
     }
 
@@ -284,8 +286,8 @@ mod tests {
         CreatorMetadata {
             name: "著者名".to_owned(),
             file_as: None,
-            role: Some("\t".to_owned()),
-            alternate_script: None,
+            roles: vec!["\t".to_owned()],
+            alternate_scripts: Vec::new(),
         }
     }
 
@@ -294,11 +296,11 @@ mod tests {
         CreatorMetadata {
             name: "著者名".to_owned(),
             file_as: None,
-            role: None,
-            alternate_script: Some(AlternateScript {
+            roles: Vec::new(),
+            alternate_scripts: vec![AlternateScript {
                 value: String::new(),
                 language: "ja-Kana".to_owned(),
-            }),
+            }],
         }
     }
 
@@ -307,11 +309,11 @@ mod tests {
         CreatorMetadata {
             name: "著者名".to_owned(),
             file_as: None,
-            role: None,
-            alternate_script: Some(AlternateScript {
+            roles: Vec::new(),
+            alternate_scripts: vec![AlternateScript {
                 value: "チョシャメイ".to_owned(),
                 language: " ".to_owned(),
-            }),
+            }],
         }
     }
 }

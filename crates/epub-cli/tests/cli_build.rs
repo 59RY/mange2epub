@@ -34,7 +34,7 @@ fn builds_the_jpeg_fixture_with_a_generated_identifier() {
             "--creator-alternate-script",
             "テスト",
             "--creator-alternate-script-language",
-            "ja-kana-jp",
+            "ja-Kana",
             "--publisher",
             "Test Publishers",
             "--language",
@@ -74,7 +74,7 @@ fn builds_the_png_fixture_with_the_specified_identifier() {
             "--creator-alternate-script",
             "テスト",
             "--creator-alternate-script-language",
-            "ja-kana-jp",
+            "ja-Kana",
             "--publisher",
             "Test Publishers",
             "--language",
@@ -124,14 +124,14 @@ fn assert_common_metadata(package: &str, title: &str, title_file_as: &str, descr
     assert!(package.contains(&format!(
         "<meta property=\"file-as\" refines=\"#title\">{title_file_as}</meta>"
     )));
-    assert!(package.contains("<dc:creator id=\"creator\">test</dc:creator>"));
-    assert!(package.contains("<meta property=\"file-as\" refines=\"#creator\">テスト</meta>"));
+    assert!(package.contains("<dc:creator id=\"creator-0000\">test</dc:creator>"));
+    assert!(package.contains("<meta property=\"file-as\" refines=\"#creator-0000\">テスト</meta>"));
     assert!(package.contains(
-        "<meta property=\"role\" refines=\"#creator\" scheme=\"marc:relators\">aut</meta>"
+        "<meta property=\"role\" refines=\"#creator-0000\" scheme=\"marc:relators\">aut</meta>"
     ));
     assert!(
         package.contains(
-            "<meta property=\"alternate-script\" refines=\"#creator\" xml:lang=\"ja-kana-jp\">テスト</meta>"
+            "<meta property=\"alternate-script\" refines=\"#creator-0000\" xml:lang=\"ja-Kana\">テスト</meta>"
         )
     );
     assert!(package.contains(&format!("<dc:description>{description}</dc:description>")));

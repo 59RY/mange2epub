@@ -117,16 +117,22 @@ struct BuildArguments {
 impl BuildArguments {
     /// CLI 引数を、利用者が指定する書誌情報とビルド処理の入力へ変換する
     fn into_build_request(self) -> BuildRequest {
-        let alternate_script = self
+        let alternate_scripts = self
             .creator_alternate_script
             .zip(self.creator_alternate_script_language)
-            .map(|(value, language)| AlternateScript { value, language });
-        let creator = self.creator.map(|name| CreatorMetadata {
-            name,
-            file_as: self.creator_file_as,
-            role: self.creator_role,
-            alternate_script,
-        });
+            .map(|(value, language)| AlternateScript { value, language })
+            .into_iter()
+            .collect();
+        let creators = self
+            .creator
+            .map(|name| CreatorMetadata {
+                name,
+                file_as: self.creator_file_as,
+                roles: self.creator_role.into_iter().collect(),
+                alternate_scripts,
+            })
+            .into_iter()
+            .collect();
 
         BuildRequest {
             image_directory: self.image_directory,
@@ -134,7 +140,7 @@ impl BuildArguments {
             metadata: PublicationMetadata {
                 title: self.title,
                 title_file_as: self.title_file_as,
-                creator,
+                creators,
                 description: self.description,
                 publisher: self.publisher,
                 language: self.language,
@@ -212,7 +218,7 @@ mod tests {
         assert_eq!(request.metadata.title, "書籍のタイトル");
         assert_eq!(request.metadata.language, "ja");
         assert_eq!(request.metadata.title_file_as, None);
-        assert_eq!(request.metadata.creator, None);
+        assert!(request.metadata.creators.is_empty());
     }
 
     #[test]
@@ -286,7 +292,7 @@ mod tests {
             "--publisher",
             "発行元",
             "--language",
-            "en",
+            "ja",
             "--identifier",
             "https://example.com/books/123",
         ])
@@ -294,8 +300,8 @@ mod tests {
 
         let Command::Build(arguments) = cli.command;
         let request = arguments.into_build_request();
-        let creator = request.metadata.creator.unwrap();
-        let alternate_script = creator.alternate_script.unwrap();
+        let creator = request.metadata.creators.into_iter().next().unwrap();
+        let alternate_script = creator.alternate_scripts.into_iter().next().unwrap();
 
         assert_eq!(
             request.metadata.title_file_as.as_deref(),
@@ -303,14 +309,14 @@ mod tests {
         );
         assert_eq!(request.metadata.description.as_deref(), Some("説明文"));
         assert_eq!(request.metadata.publisher.as_deref(), Some("発行元"));
-        assert_eq!(request.metadata.language, "en");
+        assert_eq!(request.metadata.language, "ja");
         assert_eq!(
             request.metadata.identifier.as_deref(),
             Some("https://example.com/books/123")
         );
         assert_eq!(creator.name, "著者名");
         assert_eq!(creator.file_as.as_deref(), Some("チョシャメイ"));
-        assert_eq!(creator.role.as_deref(), Some("edt"));
+        assert_eq!(creator.roles, ["edt"]);
         assert_eq!(alternate_script.value, "チョシャメイ");
         assert_eq!(alternate_script.language, "ja-Kana");
     }

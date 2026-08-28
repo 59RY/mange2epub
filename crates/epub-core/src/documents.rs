@@ -21,7 +21,7 @@ const NAVIGATION_PATH: &str = "nav.xhtml";
 pub struct MinimalMetadata {
     pub title: String,
     pub title_file_as: Option<String>,
-    pub creator: Option<CreatorMetadata>,
+    pub creators: Vec<CreatorMetadata>,
     pub description: Option<String>,
     pub publisher: Option<String>,
     pub identifier: String,
@@ -41,7 +41,7 @@ impl MinimalMetadata {
         Self {
             title: metadata.title.clone(),
             title_file_as: metadata.title_file_as.clone(),
-            creator: metadata.creator.clone(),
+            creators: metadata.creators.clone(),
             description: metadata.description.clone(),
             publisher: metadata.publisher.clone(),
             identifier,
@@ -185,7 +185,7 @@ fn generate_package_opf(
         "file-as",
         metadata.title_file_as.as_deref(),
     )?;
-    write_creator_metadata(&mut writer, metadata.creator.as_ref())?;
+    write_creator_metadata(&mut writer, &metadata.creators)?;
     write_optional_dc_element(
         &mut writer,
         "dc:description",
@@ -300,42 +300,64 @@ fn generate_package_opf(
     into_string(writer)
 }
 
-/// 著者と、その著者を対象にした refinement 要素を出力する
+/// 著者と、それぞれの著者を対象にした refinement 要素を出力する
 fn write_creator_metadata(
     writer: &mut Writer<Vec<u8>>,
-    creator: Option<&CreatorMetadata>,
+    creators: &[CreatorMetadata],
 ) -> Result<(), DocumentError> {
-    let Some(creator) = creator else {
-        return Ok(());
-    };
+    for (index, creator) in creators.iter().enumerate() {
+        let creator_id = format!("creator-{index:04}");
+        let creator_reference = format!("#{creator_id}");
 
-    text_element(writer, "dc:creator", &[("id", "creator")], &creator.name)?;
-    write_optional_refinement(writer, "#creator", "file-as", creator.file_as.as_deref())?;
+        text_element(writer, "dc:creator", &[("id", &creator_id)], &creator.name)?;
+        write_optional_refinement(
+            writer,
+            &creator_reference,
+            "file-as",
+            creator.file_as.as_deref(),
+        )?;
+
+        if creator.roles.is_empty() {
+            write_creator_role(writer, &creator_reference, "aut")?;
+        } else {
+            for role in &creator.roles {
+                write_creator_role(writer, &creator_reference, role)?;
+            }
+        }
+
+        for alternate_script in &creator.alternate_scripts {
+            text_element(
+                writer,
+                "meta",
+                &[
+                    ("property", "alternate-script"),
+                    ("refines", &creator_reference),
+                    ("xml:lang", &alternate_script.language),
+                ],
+                &alternate_script.value,
+            )?;
+        }
+    }
+
+    Ok(())
+}
+
+/// 著者の役割を表す EPUB refinement 要素を出力する
+fn write_creator_role(
+    writer: &mut Writer<Vec<u8>>,
+    creator_reference: &str,
+    role: &str,
+) -> Result<(), DocumentError> {
     text_element(
         writer,
         "meta",
         &[
             ("property", "role"),
-            ("refines", "#creator"),
+            ("refines", creator_reference),
             ("scheme", "marc:relators"),
         ],
-        creator.role.as_deref().unwrap_or("aut"),
-    )?;
-
-    if let Some(alternate_script) = &creator.alternate_script {
-        text_element(
-            writer,
-            "meta",
-            &[
-                ("property", "alternate-script"),
-                ("refines", "#creator"),
-                ("xml:lang", &alternate_script.language),
-            ],
-            &alternate_script.value,
-        )?;
-    }
-
-    Ok(())
+        role,
+    )
 }
 
 /// 指定された値を、既存要素を対象とする refinement として出力する
@@ -727,18 +749,32 @@ mod tests {
         assert!(
             documents
                 .package_opf
-                .contains("<dc:creator id=\"creator\">著者名</dc:creator>")
+                .contains("<dc:creator id=\"creator-0000\">著者名</dc:creator>")
         );
+        assert!(
+            documents.package_opf.contains(
+                "<meta property=\"file-as\" refines=\"#creator-0000\">チョシャメイ</meta>"
+            )
+        );
+        assert!(documents.package_opf.contains(
+            "<meta property=\"role\" refines=\"#creator-0000\" scheme=\"marc:relators\">aut</meta>"
+        ));
+        assert!(documents.package_opf.contains(
+            "<meta property=\"role\" refines=\"#creator-0000\" scheme=\"marc:relators\">edt</meta>"
+        ));
+        assert!(documents.package_opf.contains(
+            "<meta property=\"alternate-script\" refines=\"#creator-0000\" xml:lang=\"ja-Kana\">チョシャメイ</meta>"
+        ));
+        assert!(documents.package_opf.contains(
+            "<meta property=\"alternate-script\" refines=\"#creator-0000\" xml:lang=\"ja-Latn\">Choshamei</meta>"
+        ));
         assert!(
             documents
                 .package_opf
-                .contains("<meta property=\"file-as\" refines=\"#creator\">チョシャメイ</meta>")
+                .contains("<dc:creator id=\"creator-0001\">編集者名</dc:creator>")
         );
         assert!(documents.package_opf.contains(
-            "<meta property=\"role\" refines=\"#creator\" scheme=\"marc:relators\">aut</meta>"
-        ));
-        assert!(documents.package_opf.contains(
-            "<meta property=\"alternate-script\" refines=\"#creator\" xml:lang=\"ja-Kana\">チョシャメイ</meta>"
+            "<meta property=\"role\" refines=\"#creator-0001\" scheme=\"marc:relators\">aut</meta>"
         ));
         assert!(
             documents
@@ -753,7 +789,7 @@ mod tests {
         assert!(
             documents
                 .package_opf
-                .contains("<dc:language>en</dc:language>")
+                .contains("<dc:language>ja</dc:language>")
         );
     }
 
@@ -769,7 +805,7 @@ mod tests {
         MinimalMetadata {
             title: "Untitled".to_owned(),
             title_file_as: None,
-            creator: None,
+            creators: Vec::new(),
             description: None,
             publisher: None,
             identifier: "urn:uuid:00000000-0000-0000-0000-000000000000".to_owned(),
@@ -783,18 +819,32 @@ mod tests {
         PublicationMetadata {
             title: "書籍のタイトル".to_owned(),
             title_file_as: Some("ショセキノタイトル".to_owned()),
-            creator: Some(CreatorMetadata {
-                name: "著者名".to_owned(),
-                file_as: Some("チョシャメイ".to_owned()),
-                role: None,
-                alternate_script: Some(AlternateScript {
-                    value: "チョシャメイ".to_owned(),
-                    language: "ja-Kana".to_owned(),
-                }),
-            }),
+            creators: vec![
+                CreatorMetadata {
+                    name: "著者名".to_owned(),
+                    file_as: Some("チョシャメイ".to_owned()),
+                    roles: vec!["aut".to_owned(), "edt".to_owned()],
+                    alternate_scripts: vec![
+                        AlternateScript {
+                            value: "チョシャメイ".to_owned(),
+                            language: "ja-Kana".to_owned(),
+                        },
+                        AlternateScript {
+                            value: "Choshamei".to_owned(),
+                            language: "ja-Latn".to_owned(),
+                        },
+                    ],
+                },
+                CreatorMetadata {
+                    name: "編集者名".to_owned(),
+                    file_as: None,
+                    roles: Vec::new(),
+                    alternate_scripts: Vec::new(),
+                },
+            ],
             description: Some("説明文".to_owned()),
             publisher: Some("発行元".to_owned()),
-            language: "en".to_owned(),
+            language: "ja".to_owned(),
             identifier: Some("https://example.com/books/123".to_owned()),
         }
     }

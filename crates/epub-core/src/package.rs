@@ -316,7 +316,7 @@ mod tests {
         MinimalMetadata {
             title: "Untitled".to_owned(),
             title_file_as: None,
-            creator: None,
+            creators: Vec::new(),
             description: None,
             publisher: None,
             identifier: "urn:uuid:00000000-0000-0000-0000-000000000000".to_owned(),
