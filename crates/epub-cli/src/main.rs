@@ -6,6 +6,7 @@ use epub_core::{
     build_epub,
 };
 
+mod config;
 mod i18n;
 
 rust_i18n::i18n!("locales", fallback = "en");
@@ -55,23 +56,49 @@ impl Locale {
 /// 現在アプリケーションが対応しているコマンド
 #[derive(Debug, Subcommand)]
 enum Command {
-    /// 対応する画像のディレクトリから EPUB を生成する
+    /// 画像ディレクトリまたは YAML 設定ファイルから EPUB を生成する
     Build(BuildArguments),
 }
 
 /// `build` コマンドが受け取る引数
 #[derive(Args, Debug)]
 struct BuildArguments {
+    /// YAML 設定ファイルのパス
+    #[arg(
+        long,
+        value_name = "FILE",
+        conflicts_with_all = [
+            "image_directory",
+            "output",
+            "title",
+            "title_file_as",
+            "creator",
+            "creator_file_as",
+            "creator_role",
+            "creator_alternate_script",
+            "creator_alternate_script_language",
+            "description",
+            "publisher",
+            "date",
+            "types",
+            "subjects",
+            "language",
+            "identifier"
+        ]
+    )]
+    config: Option<PathBuf>,
+
     /// ページ画像が入ったディレクトリ
-    image_directory: PathBuf,
+    #[arg(required_unless_present = "config")]
+    image_directory: Option<PathBuf>,
 
     /// 生成する EPUB ファイルのパス
-    #[arg(short, long)]
-    output: PathBuf,
+    #[arg(short, long, required_unless_present = "config")]
+    output: Option<PathBuf>,
 
     /// 書籍のタイトル
-    #[arg(long)]
-    title: String,
+    #[arg(long, required_unless_present = "config")]
+    title: Option<String>,
 
     /// タイトルの読み
     #[arg(long)]
@@ -105,9 +132,21 @@ struct BuildArguments {
     #[arg(long)]
     publisher: Option<String>,
 
+    /// 出版日時
+    #[arg(long)]
+    date: Option<String>,
+
+    /// 内容の性質またはジャンル
+    #[arg(long = "type", value_name = "TEXT")]
+    types: Vec<String>,
+
+    /// 内容の主題
+    #[arg(long = "subject", value_name = "TEXT")]
+    subjects: Vec<String>,
+
     /// 書籍の言語
-    #[arg(long, default_value = "ja")]
-    language: String,
+    #[arg(long)]
+    language: Option<String>,
 
     /// Primary Identifier
     #[arg(long)]
@@ -115,33 +154,58 @@ struct BuildArguments {
 }
 
 impl BuildArguments {
-    /// CLI 引数を、利用者が指定する書誌情報とビルド処理の入力へ変換する
-    fn into_build_request(self) -> BuildRequest {
-        let alternate_script = self
+    /// CLI 引数または YAML 設定ファイルを、ビルド処理の入力へ変換する
+    fn into_build_request(self) -> Result<BuildRequest, config::ConfigError> {
+        if let Some(path) = self.config {
+            return config::load_build_request(&path);
+        }
+
+        let alternate_scripts = self
             .creator_alternate_script
             .zip(self.creator_alternate_script_language)
-            .map(|(value, language)| AlternateScript { value, language });
-        let creator = self.creator.map(|name| CreatorMetadata {
-            name,
-            file_as: self.creator_file_as,
-            role: self.creator_role,
-            alternate_script,
-        });
+            .map(|(value, language)| AlternateScript { value, language })
+            .into_iter()
+            .collect();
+        let creators = self
+            .creator
+            .map(|name| CreatorMetadata {
+                name,
+                file_as: self.creator_file_as,
+                roles: self.creator_role.into_iter().collect(),
+                alternate_scripts,
+            })
+            .into_iter()
+            .collect();
 
-        BuildRequest {
-            image_directory: self.image_directory,
-            output_path: self.output,
+        Ok(BuildRequest {
+            // clap が config 未指定時に必須入力を検証済みであるため、ここでは値が存在する
+            image_directory: self
+                .image_directory
+                .expect("clap requires an image directory without --config"),
+            output_path: self
+                .output
+                .expect("clap requires an output path without --config"),
             metadata: PublicationMetadata {
-                title: self.title,
+                title: self.title.expect("clap requires a title without --config"),
                 title_file_as: self.title_file_as,
-                creator,
+                creators,
                 description: self.description,
                 publisher: self.publisher,
-                language: self.language,
+                date: self.date,
+                types: self.types,
+                subjects: self.subjects,
+                language: self.language.unwrap_or_else(|| "ja".to_owned()),
                 identifier: self.identifier,
             },
-        }
+        })
     }
+}
+
+/// CLI 入力処理または EPUB 生成処理で発生しうるエラー
+#[derive(Debug)]
+enum ApplicationError {
+    Config(config::ConfigError),
+    Build(BuildError),
 }
 
 fn main() -> ExitCode {
@@ -166,10 +230,15 @@ fn resolve_locale(explicit: Option<Locale>, system_locale: Option<&str>) -> Loca
         .unwrap_or(Locale::En)
 }
 
-fn run(command: Command) -> Result<BuildReport, BuildError> {
+fn run(command: Command) -> Result<BuildReport, ApplicationError> {
     // 引数解析はこの crate で行い、EPUB 生成処理は epub-core に置く
     match command {
-        Command::Build(arguments) => build_epub(&arguments.into_build_request()),
+        Command::Build(arguments) => {
+            let request = arguments
+                .into_build_request()
+                .map_err(ApplicationError::Config)?;
+            build_epub(&request).map_err(ApplicationError::Build)
+        }
     }
 }
 
@@ -204,7 +273,7 @@ mod tests {
 
         let locale = cli.locale;
         let Command::Build(arguments) = cli.command;
-        let request = arguments.into_build_request();
+        let request = arguments.into_build_request().unwrap();
 
         assert_eq!(locale, None);
         assert_eq!(request.image_directory.to_string_lossy(), "./images");
@@ -212,7 +281,10 @@ mod tests {
         assert_eq!(request.metadata.title, "書籍のタイトル");
         assert_eq!(request.metadata.language, "ja");
         assert_eq!(request.metadata.title_file_as, None);
-        assert_eq!(request.metadata.creator, None);
+        assert!(request.metadata.creators.is_empty());
+        assert_eq!(request.metadata.date, None);
+        assert!(request.metadata.types.is_empty());
+        assert!(request.metadata.subjects.is_empty());
     }
 
     #[test]
@@ -231,6 +303,31 @@ mod tests {
             "manga2epub",
             "build",
             "./images",
+            "--title",
+            "書籍のタイトル",
+        ]);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    // YAML 設定ファイルだけを指定する場合は、画像・出力先・タイトルを CLI で求めない
+    fn parses_the_build_command_with_a_configuration_file() {
+        let cli = Cli::try_parse_from(["manga2epub", "build", "--config", "./book.yaml"]).unwrap();
+
+        let Command::Build(arguments) = cli.command;
+
+        assert_eq!(arguments.config, Some(PathBuf::from("./book.yaml")));
+    }
+
+    #[test]
+    // 設定ファイルと CLI 個別指定を混在させず、どちらが優先されるかを曖昧にしない
+    fn rejects_mixing_a_configuration_file_with_cli_build_arguments() {
+        let result = Cli::try_parse_from([
+            "manga2epub",
+            "build",
+            "--config",
+            "./book.yaml",
             "--title",
             "書籍のタイトル",
         ]);
@@ -285,17 +382,27 @@ mod tests {
             "説明文",
             "--publisher",
             "発行元",
+            "--date",
+            "2026-08-31T15:00:00Z",
+            "--type",
+            "comic",
+            "--type",
+            "image",
+            "--subject",
+            "Illustration",
+            "--subject",
+            "Fiction",
             "--language",
-            "en",
+            "ja",
             "--identifier",
             "https://example.com/books/123",
         ])
         .unwrap();
 
         let Command::Build(arguments) = cli.command;
-        let request = arguments.into_build_request();
-        let creator = request.metadata.creator.unwrap();
-        let alternate_script = creator.alternate_script.unwrap();
+        let request = arguments.into_build_request().unwrap();
+        let creator = request.metadata.creators.into_iter().next().unwrap();
+        let alternate_script = creator.alternate_scripts.into_iter().next().unwrap();
 
         assert_eq!(
             request.metadata.title_file_as.as_deref(),
@@ -303,14 +410,20 @@ mod tests {
         );
         assert_eq!(request.metadata.description.as_deref(), Some("説明文"));
         assert_eq!(request.metadata.publisher.as_deref(), Some("発行元"));
-        assert_eq!(request.metadata.language, "en");
+        assert_eq!(
+            request.metadata.date.as_deref(),
+            Some("2026-08-31T15:00:00Z")
+        );
+        assert_eq!(request.metadata.types, ["comic", "image"]);
+        assert_eq!(request.metadata.subjects, ["Illustration", "Fiction"]);
+        assert_eq!(request.metadata.language, "ja");
         assert_eq!(
             request.metadata.identifier.as_deref(),
             Some("https://example.com/books/123")
         );
         assert_eq!(creator.name, "著者名");
         assert_eq!(creator.file_as.as_deref(), Some("チョシャメイ"));
-        assert_eq!(creator.role.as_deref(), Some("edt"));
+        assert_eq!(creator.roles, ["edt"]);
         assert_eq!(alternate_script.value, "チョシャメイ");
         assert_eq!(alternate_script.language, "ja-Kana");
     }
@@ -362,9 +475,10 @@ mod tests {
     /// ビルド実行テスト用の、必須項目だけを持つ CLI 引数を作る
     fn build_arguments(image_directory: PathBuf, output: PathBuf) -> BuildArguments {
         BuildArguments {
-            image_directory,
-            output,
-            title: "書籍のタイトル".to_owned(),
+            config: None,
+            image_directory: Some(image_directory),
+            output: Some(output),
+            title: Some("書籍のタイトル".to_owned()),
             title_file_as: None,
             creator: None,
             creator_file_as: None,
@@ -373,7 +487,10 @@ mod tests {
             creator_alternate_script_language: None,
             description: None,
             publisher: None,
-            language: "ja".to_owned(),
+            date: None,
+            types: Vec::new(),
+            subjects: Vec::new(),
+            language: None,
             identifier: None,
         }
     }

@@ -441,11 +441,45 @@ Google Play Books での表示を主要な利用目的の一つとする。実�
 <dc:publisher>Yūtenji Publishers</dc:publisher>
 ```
 
-## 12.8 Language
+## 12.8 Date
+
+出版日時を任意で指定できる。指定した場合は、`metadata` 内に 1 つの `dc:date` を出力する。
+
+```xml
+<dc:date>2026-08-31T15:00:00Z</dc:date>
+```
+
+入力は日付のみの `YYYY-MM-DD`、またはタイムゾーンを含む RFC 3339 形式の日時とする。例えば、UTC は `2026-08-31T15:00:00Z`、日本標準時は `2026-09-01T00:00:00+09:00` と指定する。
+
+日付のみの入力へ時刻やタイムゾーンを補完せず、日時のタイムゾーンも変換しない。検証済みの入力値をそのまま `dc:date` へ出力する。
+
+## 12.9 Type
+
+内容の性質またはジャンルを任意で指定できる。複数の値を指定した場合は、値ごとに `dc:type` を出力する。
+
+```xml
+<dc:type>comic</dc:type>
+<dc:type>image</dc:type>
+```
+
+値は文字列として扱い、ツール独自の選択肢には制限しない。利用者が用途に応じて統制語彙を選択できるようにする。
+
+## 12.10 Subject
+
+内容の主題を任意で指定できる。複数の値を指定した場合は、値ごとに `dc:subject` を出力する。
+
+```xml
+<dc:subject>Illustration</dc:subject>
+<dc:subject>Fiction</dc:subject>
+```
+
+値は文字列として扱い、指定順を維持する。
+
+## 12.11 Language
 
 必須項目とする。デフォルトは `<dc:language>ja</dc:language>` 。CLI オプションから変更でき、設定ファイル導入後も同じ意味の値を指定できるようにする。
 
-## 12.9 Identifier
+## 12.12 Identifier
 
 利用者が指定できる。指定があればその値を Primary Identifier として使い、なければ UUID を自動生成する。
 
@@ -465,7 +499,7 @@ Google Play Books での表示を主要な利用目的の一つとする。実�
 
 URI/URN の組み立て方は、設定値をそのまま使う方式とツール側で `urn:` を付加する方式を混在させない。CLI オプションおよび将来の設定ファイルでは指定値をそのまま使い、ツール側で `urn:` などの接頭辞は補わない。
 
-## 12.10 modified
+## 12.13 modified
 
 EPUB 3.3 で必要な `<meta property="dcterms:modified">...</meta>` を生成する。日時は EPUB 生成時の UTC 時刻から生成し、秒精度の `YYYY-MM-DDThh:mm:ssZ` 形式とする（1 秒未満の端数は含めない）。
 
@@ -607,19 +641,25 @@ YAML を採用する。ファイル名のデフォルトは `book.yaml` とす�
 
 CLI 引数だけで全書誌情報・全ページ指定を行わせない。CLI は簡単な操作に使い、複雑な書籍設定は YAML へ記述する。GUI 化した場合も、GUI の内部データモデルと YAML を極力共通化する。
 
+利用者向けの CLI 引数一覧と `book.yaml` の記述例は、`docs/CLI_USAGE.md` にまとめる。
+
 ---
 
-# 19. book.yaml 初期案
+# 19. book.yaml
 
-以下のスキーマで進める。
+`book.yaml` バージョン 1 で受け付ける設定ファイルのスキーマは以下とする。
 
 ```yaml
 version: 1
+
+# 設定ファイルからの相対パスで指定する
+output: "./book.epub"
 
 book:
   title: "書籍のタイトル"
   title_file_as: "ショセキノタイトル"
 
+  # 省略時は ja
   language: "ja"
 
   description: |
@@ -627,7 +667,18 @@ book:
 
   publisher: "Yūtenji Publishers"
 
-  # 未指定なら UUID を生成
+  # 日付のみ、またはタイムゾーン付きの日時
+  date: "2026-08-31T15:00:00Z"
+
+  types:
+    - comic
+    - image
+
+  subjects:
+    - Illustration
+    - Fiction
+
+  # 省略または null なら UUID を生成
   identifier: null
 
   creators:
@@ -644,43 +695,18 @@ book:
         - lang: "ja-Latn"
           value: "Yūtenji"
 
-layout:
-  direction: rtl
-  spread: landscape
-  orientation: auto
-
 images:
+  # 設定ファイルからの相対パスで指定する
   directory: "./images"
-
-pages:
-  cover: first
-
-  auto:
-    first_after_cover: right
-    alternate: true
-
-  overrides:
-    - page: 4
-      placement: center
-
-    - page: 12
-      placement: left
-
-    - page: 13
-      placement: right
-
-toc:
-  - title: "第1話"
-    page: 2
-
-  - title: "第2話"
-    page: 24
-
-  - title: "あとがき"
-    page: 50
 ```
 
-`layout.spread` の標準値は `landscape` とする。
+`version`、`output`、`book.title`、`images.directory` は必須とする。`book` のそれ以外の項目は任意とし、`creators`、`roles`、`alternate_scripts`、`types`、`subjects` はそれぞれ複数指定できる。
+
+`output` と `images.directory` の相対パスは、設定ファイル自身の親ディレクトリを基準に解決する。例えば `config/book.yaml` 内の `./images` は `config/images` を指す。
+
+このバージョンでは未知のキーをエラーとする。入力の誤記を見落とさずに検出するためである。
+
+`layout`、`pages`、`toc`、画像の明示順序は、対応する機能と同時に追加する。現在のバージョンではこれらのキーを受け付けない。ページ指定の設計は [#20](#20-ページ指定スキーマの考え方)、明示順序の設計は [#26](#26-ファイル順序) を参照する。
 
 ---
 
@@ -773,21 +799,28 @@ manga2epub build ./images \
   --creator-alternate-script-language ja-Kana \
   --description "紹介文" \
   --publisher "発行元" \
+  --date "2026-08-31T15:00:00Z" \
+  --type comic \
+  --type image \
+  --subject Illustration \
+  --subject Fiction \
   --language ja \
   --identifier "urn:uuid:12345678-abcd-1234-ef00-123456789abc"
 ```
+
+`--date` は日付のみ、またはタイムゾーン付きの日時を指定する。`--type` と `--subject` は繰り返し指定できる。
 
 `--language` の既定値は `ja` とする。`--identifier` を省略した場合は UUID を自動生成する。`--creator-role` を省略した場合は `aut` とする。`--creator-alternate-script` を指定する場合は `--creator-alternate-script-language` も指定する。
 
 ## 21.3 設定ファイル指定
 
-設定ファイルは、CLI オプションで同じメタデータを繰り返し指定する負担を減らすために導入する。
+設定ファイルを用いてメタデータを指定可能にする。これにより、CLI オプションで同じメタデータを都度指定する記述コストを削減する。
 
 ```bash
-manga2epub build ./book.yaml
+manga2epub build --config ./book.yaml
 ```
 
-設定ファイルを導入するまでは、この形式を受け付けない。
+`--config` を指定する場合は、画像ディレクトリ、`--output`、`--title`、その他の書誌情報 CLI 引数を同時に指定できない。設定ファイルと CLI 引数のどちらを優先するかを曖昧にしないためである。
 
 ## 21.4 初期設定生成
 
@@ -863,6 +896,7 @@ OS から取得した言語に対応していない場合も英語を使う。
 │   └── fixtures/
 │
 ├── docs/
+│   ├── CLI_USAGE.md
 │   └── PROJECT_SPEC.md
 │
 └── README.md
@@ -1077,7 +1111,7 @@ EPUB 3.3 固定レイアウト
 
 ## Phase 3 — YAML
 
-`book.yaml` を実装する。
+`book.yaml` を実装する。初期スキーマでは書誌情報、出力先、入力画像ディレクトリを扱う。
 
 ## Phase 4 — Page customization
 

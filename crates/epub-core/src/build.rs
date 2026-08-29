@@ -139,6 +139,9 @@ mod tests {
         let package = package_document(&output);
         assert!(package.contains("<dc:title id=\"title\">書籍のタイトル</dc:title>"));
         assert!(package.contains("<dc:language>ja</dc:language>"));
+        assert!(!package.contains("<dc:date>"));
+        assert!(!package.contains("<dc:type>"));
+        assert!(!package.contains("<dc:subject>"));
         assert_modified_timestamp(&package);
         assert_uuid_identifier(&package);
     }

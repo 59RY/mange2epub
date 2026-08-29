@@ -34,9 +34,11 @@ fn builds_the_jpeg_fixture_with_a_generated_identifier() {
             "--creator-alternate-script",
             "テスト",
             "--creator-alternate-script-language",
-            "ja-kana-jp",
+            "ja-Kana",
             "--publisher",
             "Test Publishers",
+            "--date",
+            "2026-08-31",
             "--language",
             "ja",
         ],
@@ -48,6 +50,9 @@ fn builds_the_jpeg_fixture_with_a_generated_identifier() {
         "ジェイペグインテグレーションフィクスチャ",
         "JPEG 書籍が正しく作成されているかどうかのテストです。",
     );
+    assert!(package.contains("<dc:date>2026-08-31</dc:date>"));
+    assert!(!package.contains("<dc:type>"));
+    assert!(!package.contains("<dc:subject>"));
     assert_generated_uuid_identifier(&package);
 }
 
@@ -74,9 +79,19 @@ fn builds_the_png_fixture_with_the_specified_identifier() {
             "--creator-alternate-script",
             "テスト",
             "--creator-alternate-script-language",
-            "ja-kana-jp",
+            "ja-Kana",
             "--publisher",
             "Test Publishers",
+            "--date",
+            "2026-08-31T15:00:00Z",
+            "--type",
+            "comic",
+            "--type",
+            "image",
+            "--subject",
+            "Illustration",
+            "--subject",
+            "Fiction",
             "--language",
             "ja",
             "--identifier",
@@ -90,11 +105,78 @@ fn builds_the_png_fixture_with_the_specified_identifier() {
         "ピングインテグレーションフィクスチャ",
         "PNG 書籍が正しく作成されているかどうかのテストです。",
     );
+    assert!(package.contains("<dc:date>2026-08-31T15:00:00Z</dc:date>"));
+    assert_repeated_metadata(&package);
     assert!(
         package.contains(
             "<dc:identifier id=\"pub-id\">urn:test:59RY.manga2epub.integrationTest.pngFixture</dc:identifier>"
         )
     );
+}
+
+// YAML 設定ファイルから EPUB を生成し、複数の著者情報と相対出力先を検証する
+#[test]
+fn builds_the_png_fixture_from_a_yaml_configuration_file() {
+    let directory = TestDirectory::new();
+    let configuration_path = directory.path().join("book.yaml");
+    let input_directory = fixture_directory("png_only");
+    let output_path = directory.path().join("book.epub");
+    std::fs::write(
+        &configuration_path,
+        format!(
+            r#"version: 1
+output: book.epub
+book:
+  title: YAML integration fixture
+  creators:
+    - name: test
+      roles:
+        - aut
+        - edt
+      alternate_scripts:
+        - lang: ja-Kana
+          value: テスト
+    - name: editor
+  date: "2026-09-01T00:00:00+09:00"
+  types:
+    - comic
+    - image
+  subjects:
+    - Illustration
+    - Fiction
+  language: ja
+images:
+  directory: {}
+"#,
+            yaml_string(&input_directory)
+        ),
+    )
+    .unwrap();
+
+    let status = Command::new(env!("CARGO_BIN_EXE_manga2epub"))
+        .args(["build", "--config"])
+        .arg(&configuration_path)
+        .status()
+        .unwrap();
+
+    assert!(status.success());
+
+    let package = read_package_document(&output_path);
+    assert!(package.contains("<dc:title id=\"title\">YAML integration fixture</dc:title>"));
+    assert!(package.contains("<dc:creator id=\"creator-0000\">test</dc:creator>"));
+    assert!(package.contains(
+        "<meta property=\"role\" refines=\"#creator-0000\" scheme=\"marc:relators\">aut</meta>"
+    ));
+    assert!(package.contains(
+        "<meta property=\"role\" refines=\"#creator-0000\" scheme=\"marc:relators\">edt</meta>"
+    ));
+    assert!(package.contains(
+        "<meta property=\"alternate-script\" refines=\"#creator-0000\" xml:lang=\"ja-Kana\">テスト</meta>"
+    ));
+    assert!(package.contains("<dc:creator id=\"creator-0001\">editor</dc:creator>"));
+    assert!(package.contains("<dc:date>2026-09-01T00:00:00+09:00</dc:date>"));
+    assert_repeated_metadata(&package);
+    assert_generated_uuid_identifier(&package);
 }
 
 // 指定した fixture と CLI オプションから EPUB を生成し、OPF パッケージ文書を読み取る
@@ -124,19 +206,34 @@ fn assert_common_metadata(package: &str, title: &str, title_file_as: &str, descr
     assert!(package.contains(&format!(
         "<meta property=\"file-as\" refines=\"#title\">{title_file_as}</meta>"
     )));
-    assert!(package.contains("<dc:creator id=\"creator\">test</dc:creator>"));
-    assert!(package.contains("<meta property=\"file-as\" refines=\"#creator\">テスト</meta>"));
+    assert!(package.contains("<dc:creator id=\"creator-0000\">test</dc:creator>"));
+    assert!(package.contains("<meta property=\"file-as\" refines=\"#creator-0000\">テスト</meta>"));
     assert!(package.contains(
-        "<meta property=\"role\" refines=\"#creator\" scheme=\"marc:relators\">aut</meta>"
+        "<meta property=\"role\" refines=\"#creator-0000\" scheme=\"marc:relators\">aut</meta>"
     ));
     assert!(
         package.contains(
-            "<meta property=\"alternate-script\" refines=\"#creator\" xml:lang=\"ja-kana-jp\">テスト</meta>"
+            "<meta property=\"alternate-script\" refines=\"#creator-0000\" xml:lang=\"ja-Kana\">テスト</meta>"
         )
     );
     assert!(package.contains(&format!("<dc:description>{description}</dc:description>")));
     assert!(package.contains("<dc:publisher>Test Publishers</dc:publisher>"));
     assert!(package.contains("<dc:language>ja</dc:language>"));
+}
+
+// 繰り返し可能な type と subject が、指定順で個別の要素として出力されることを確認する
+fn assert_repeated_metadata(package: &str) {
+    assert_eq!(package.matches("<dc:type>").count(), 2);
+    let comic_position = package.find("<dc:type>comic</dc:type>").unwrap();
+    let image_position = package.find("<dc:type>image</dc:type>").unwrap();
+    assert!(comic_position < image_position);
+
+    assert_eq!(package.matches("<dc:subject>").count(), 2);
+    let illustration_position = package
+        .find("<dc:subject>Illustration</dc:subject>")
+        .unwrap();
+    let fiction_position = package.find("<dc:subject>Fiction</dc:subject>").unwrap();
+    assert!(illustration_position < fiction_position);
 }
 
 // identifier 未指定時は UUID を含む urn:uuid の値が生成されることを確認する
@@ -156,6 +253,16 @@ fn fixture_directory(name: &str) -> PathBuf {
         .join("tests")
         .join("fixtures")
         .join(name)
+}
+
+// YAML のダブルクォート文字列として、安全にパスを埋め込む
+fn yaml_string(path: &Path) -> String {
+    format!(
+        "\"{}\"",
+        path.to_string_lossy()
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"")
+    )
 }
 
 // 生成した EPUB から OPF パッケージ文書を UTF-8 テキストとして読み取る

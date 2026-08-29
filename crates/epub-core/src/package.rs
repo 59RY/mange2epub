@@ -316,9 +316,12 @@ mod tests {
         MinimalMetadata {
             title: "Untitled".to_owned(),
             title_file_as: None,
-            creator: None,
+            creators: Vec::new(),
             description: None,
             publisher: None,
+            date: None,
+            types: Vec::new(),
+            subjects: Vec::new(),
             identifier: "urn:uuid:00000000-0000-0000-0000-000000000000".to_owned(),
             language: "ja".to_owned(),
             modified: "2026-08-26T00:00:00Z".to_owned(),
