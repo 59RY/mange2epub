@@ -24,6 +24,9 @@ pub struct MinimalMetadata {
     pub creators: Vec<CreatorMetadata>,
     pub description: Option<String>,
     pub publisher: Option<String>,
+    pub date: Option<String>,
+    pub types: Vec<String>,
+    pub subjects: Vec<String>,
     pub identifier: String,
     pub language: String,
     pub modified: String,
@@ -44,6 +47,9 @@ impl MinimalMetadata {
             creators: metadata.creators.clone(),
             description: metadata.description.clone(),
             publisher: metadata.publisher.clone(),
+            date: metadata.date.clone(),
+            types: metadata.types.clone(),
+            subjects: metadata.subjects.clone(),
             identifier,
             language: metadata.language.clone(),
             modified,
@@ -192,6 +198,13 @@ fn generate_package_opf(
         metadata.description.as_deref(),
     )?;
     write_optional_dc_element(&mut writer, "dc:publisher", metadata.publisher.as_deref())?;
+    write_optional_dc_element(&mut writer, "dc:date", metadata.date.as_deref())?;
+    for value in &metadata.types {
+        text_element(&mut writer, "dc:type", &[], value)?;
+    }
+    for subject in &metadata.subjects {
+        text_element(&mut writer, "dc:subject", &[], subject)?;
+    }
     text_element(&mut writer, "dc:language", &[], &metadata.language)?;
     text_element(
         &mut writer,
@@ -789,6 +802,25 @@ mod tests {
         assert!(
             documents
                 .package_opf
+                .contains("<dc:date>2026-08-31T15:00:00Z</dc:date>")
+        );
+        assert_eq!(documents.package_opf.matches("<dc:type>").count(), 2);
+        assert!(documents.package_opf.contains("<dc:type>comic</dc:type>"));
+        assert!(documents.package_opf.contains("<dc:type>image</dc:type>"));
+        assert_eq!(documents.package_opf.matches("<dc:subject>").count(), 2);
+        assert!(
+            documents
+                .package_opf
+                .contains("<dc:subject>Illustration</dc:subject>")
+        );
+        assert!(
+            documents
+                .package_opf
+                .contains("<dc:subject>Fiction</dc:subject>")
+        );
+        assert!(
+            documents
+                .package_opf
                 .contains("<dc:language>ja</dc:language>")
         );
     }
@@ -808,6 +840,9 @@ mod tests {
             creators: Vec::new(),
             description: None,
             publisher: None,
+            date: None,
+            types: Vec::new(),
+            subjects: Vec::new(),
             identifier: "urn:uuid:00000000-0000-0000-0000-000000000000".to_owned(),
             language: "ja".to_owned(),
             modified: "2026-08-26T00:00:00Z".to_owned(),
@@ -844,6 +879,9 @@ mod tests {
             ],
             description: Some("説明文".to_owned()),
             publisher: Some("発行元".to_owned()),
+            date: Some("2026-08-31T15:00:00Z".to_owned()),
+            types: vec!["comic".to_owned(), "image".to_owned()],
+            subjects: vec!["Illustration".to_owned(), "Fiction".to_owned()],
             language: "ja".to_owned(),
             identifier: Some("https://example.com/books/123".to_owned()),
         }

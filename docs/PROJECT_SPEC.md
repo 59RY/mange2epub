@@ -441,11 +441,45 @@ Google Play Books での表示を主要な利用目的の一つとする。実�
 <dc:publisher>Yūtenji Publishers</dc:publisher>
 ```
 
-## 12.8 Language
+## 12.8 Date
+
+出版日時を任意で指定できる。指定した場合は、`metadata` 内に 1 つの `dc:date` を出力する。
+
+```xml
+<dc:date>2026-08-31T15:00:00Z</dc:date>
+```
+
+入力は日付のみの `YYYY-MM-DD`、またはタイムゾーンを含む RFC 3339 形式の日時とする。例えば、UTC は `2026-08-31T15:00:00Z`、日本標準時は `2026-09-01T00:00:00+09:00` と指定する。
+
+日付のみの入力へ時刻やタイムゾーンを補完せず、日時のタイムゾーンも変換しない。検証済みの入力値をそのまま `dc:date` へ出力する。
+
+## 12.9 Type
+
+内容の性質またはジャンルを任意で指定できる。複数の値を指定した場合は、値ごとに `dc:type` を出力する。
+
+```xml
+<dc:type>comic</dc:type>
+<dc:type>image</dc:type>
+```
+
+値は文字列として扱い、ツール独自の選択肢には制限しない。利用者が用途に応じて統制語彙を選択できるようにする。
+
+## 12.10 Subject
+
+内容の主題を任意で指定できる。複数の値を指定した場合は、値ごとに `dc:subject` を出力する。
+
+```xml
+<dc:subject>Illustration</dc:subject>
+<dc:subject>Fiction</dc:subject>
+```
+
+値は文字列として扱い、指定順を維持する。
+
+## 12.11 Language
 
 必須項目とする。デフォルトは `<dc:language>ja</dc:language>` 。CLI オプションから変更でき、設定ファイル導入後も同じ意味の値を指定できるようにする。
 
-## 12.9 Identifier
+## 12.12 Identifier
 
 利用者が指定できる。指定があればその値を Primary Identifier として使い、なければ UUID を自動生成する。
 
@@ -465,7 +499,7 @@ Google Play Books での表示を主要な利用目的の一つとする。実�
 
 URI/URN の組み立て方は、設定値をそのまま使う方式とツール側で `urn:` を付加する方式を混在させない。CLI オプションおよび将来の設定ファイルでは指定値をそのまま使い、ツール側で `urn:` などの接頭辞は補わない。
 
-## 12.10 modified
+## 12.13 modified
 
 EPUB 3.3 で必要な `<meta property="dcterms:modified">...</meta>` を生成する。日時は EPUB 生成時の UTC 時刻から生成し、秒精度の `YYYY-MM-DDThh:mm:ssZ` 形式とする（1 秒未満の端数は含めない）。
 
@@ -633,6 +667,17 @@ book:
 
   publisher: "Yūtenji Publishers"
 
+  # 日付のみ、またはタイムゾーン付きの日時
+  date: "2026-08-31T15:00:00Z"
+
+  types:
+    - comic
+    - image
+
+  subjects:
+    - Illustration
+    - Fiction
+
   # 省略または null なら UUID を生成
   identifier: null
 
@@ -655,7 +700,7 @@ images:
   directory: "./images"
 ```
 
-`version`、`output`、`book.title`、`images.directory` は必須とする。`book` のそれ以外の項目は任意とし、`creators`、`roles`、`alternate_scripts` はそれぞれ複数指定できる。
+`version`、`output`、`book.title`、`images.directory` は必須とする。`book` のそれ以外の項目は任意とし、`creators`、`roles`、`alternate_scripts`、`types`、`subjects` はそれぞれ複数指定できる。
 
 `output` と `images.directory` の相対パスは、設定ファイル自身の親ディレクトリを基準に解決する。例えば `config/book.yaml` 内の `./images` は `config/images` を指す。
 
@@ -754,9 +799,16 @@ manga2epub build ./images \
   --creator-alternate-script-language ja-Kana \
   --description "紹介文" \
   --publisher "発行元" \
+  --date "2026-08-31T15:00:00Z" \
+  --type comic \
+  --type image \
+  --subject Illustration \
+  --subject Fiction \
   --language ja \
   --identifier "urn:uuid:12345678-abcd-1234-ef00-123456789abc"
 ```
+
+`--date` は日付のみ、またはタイムゾーン付きの日時を指定する。`--type` と `--subject` は繰り返し指定できる。
 
 `--language` の既定値は `ja` とする。`--identifier` を省略した場合は UUID を自動生成する。`--creator-role` を省略した場合は `aut` とする。`--creator-alternate-script` を指定する場合は `--creator-alternate-script-language` も指定する。
 

@@ -129,6 +129,12 @@ struct BookMetadataConfiguration {
     description: Option<String>,
     #[serde(default)]
     publisher: Option<String>,
+    #[serde(default)]
+    date: Option<String>,
+    #[serde(default)]
+    types: Vec<String>,
+    #[serde(default)]
+    subjects: Vec<String>,
     #[serde(default = "default_language")]
     language: String,
     #[serde(default)]
@@ -148,6 +154,9 @@ impl BookMetadataConfiguration {
                 .collect(),
             description: self.description,
             publisher: self.publisher,
+            date: self.date,
+            types: self.types,
+            subjects: self.subjects,
             language: self.language,
             identifier: self.identifier,
         }
@@ -253,6 +262,13 @@ book:
     - name: 編集者名
   description: 説明文
   publisher: 発行元
+  date: "2026-09-01T00:00:00+09:00"
+  types:
+    - comic
+    - image
+  subjects:
+    - Illustration
+    - Fiction
   language: ja
   identifier: urn:test:book
 images:
@@ -276,6 +292,12 @@ images:
         );
         assert_eq!(request.metadata.description.as_deref(), Some("説明文"));
         assert_eq!(request.metadata.publisher.as_deref(), Some("発行元"));
+        assert_eq!(
+            request.metadata.date.as_deref(),
+            Some("2026-09-01T00:00:00+09:00")
+        );
+        assert_eq!(request.metadata.types, ["comic", "image"]);
+        assert_eq!(request.metadata.subjects, ["Illustration", "Fiction"]);
         assert_eq!(request.metadata.language, "ja");
         assert_eq!(
             request.metadata.identifier.as_deref(),
