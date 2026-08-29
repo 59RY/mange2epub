@@ -197,6 +197,7 @@ impl BuildArguments {
                 language: self.language.unwrap_or_else(|| "ja".to_owned()),
                 identifier: self.identifier,
             },
+            page_overrides: Vec::new(),
         })
     }
 }

@@ -10,6 +10,7 @@ error:
   invalid_image: "invalid image %{path}: %{reason}"
   no_images: "no supported images found in: %{path}"
   no_pages: "cannot generate EPUB documents without pages"
+  page_placement_count_mismatch: "image count and page placement count do not match"
   write_xml: "could not write an EPUB XML document"
   invalid_utf8: "generated XML was not valid UTF-8"
   create_output: "could not create EPUB output: %{path}"
@@ -37,6 +38,9 @@ error:
   empty_subject: "subject must not be empty"
   empty_language: "language must not be empty"
   empty_identifier: "identifier must not be empty"
+  page_number_must_be_positive: "page number must be at least 1"
+  page_number_out_of_range: "page number %{page_number} exceeds the available image count %{page_count}"
+  duplicate_page_number: "page number %{page_number} is specified more than once"
 image:
   invalid_header: "invalid image header"
   invalid_dimensions: "image dimensions must be at least 1 pixel"

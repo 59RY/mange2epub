@@ -1,6 +1,6 @@
 use epub_core::{
     BuildError, BuildReport, DocumentError, ImageCollectionError, InvalidImageReason,
-    MetadataError, PackageError,
+    MetadataError, PackageError, PageOverrideError,
 };
 use rust_i18n::t;
 
@@ -41,6 +41,7 @@ fn core_build_error(error: &BuildError, locale: Locale) -> String {
     match error {
         BuildError::InvalidMetadata(error) => metadata_error(*error, locale),
         BuildError::CollectImages(error) => image_error(error, locale),
+        BuildError::ResolvePagePlacements(error) => page_override_error(*error, locale),
         BuildError::GenerateDocuments(error) => document_error(error, locale),
         BuildError::WritePackage(error) => package_error(error, locale),
         BuildError::TruncateModifiedTime(_) => {
@@ -50,6 +51,31 @@ fn core_build_error(error: &BuildError, locale: Locale) -> String {
             t!("error.format_modified", locale = locale.as_str()).into_owned()
         }
     }
+}
+
+/// ページ配置の上書きに関するエラーを、表示ロケールに対応する文言へ変換する
+fn page_override_error(error: PageOverrideError, locale: Locale) -> String {
+    let locale = locale.as_str();
+    match error {
+        PageOverrideError::PageNumberMustBePositive => {
+            t!("error.page_number_must_be_positive", locale = locale)
+        }
+        PageOverrideError::PageOutOfRange {
+            page_number,
+            page_count,
+        } => t!(
+            "error.page_number_out_of_range",
+            locale = locale,
+            page_number = page_number,
+            page_count = page_count
+        ),
+        PageOverrideError::DuplicatePageNumber { page_number } => t!(
+            "error.duplicate_page_number",
+            locale = locale,
+            page_number = page_number
+        ),
+    }
+    .into_owned()
 }
 
 /// YAML 設定ファイルに固有のエラーを、表示ロケールに対応する文言へ変換する
@@ -145,6 +171,7 @@ fn invalid_image_reason(reason: InvalidImageReason, locale: &str) -> String {
 fn document_error(error: &DocumentError, locale: Locale) -> String {
     let key = match error {
         DocumentError::NoPages => "error.no_pages",
+        DocumentError::PagePlacementCountMismatch { .. } => "error.page_placement_count_mismatch",
         DocumentError::WriteXml(_) => "error.write_xml",
         DocumentError::InvalidUtf8(_) => "error.invalid_utf8",
     };
@@ -183,7 +210,9 @@ fn package_error(error: &PackageError, locale: Locale) -> String {
 mod tests {
     use std::path::PathBuf;
 
-    use epub_core::{BuildError, BuildReport, ImageCollectionError, MetadataError};
+    use epub_core::{
+        BuildError, BuildReport, ImageCollectionError, MetadataError, PageOverrideError,
+    };
 
     use crate::{ApplicationError, config::ConfigError};
 
@@ -263,6 +292,22 @@ mod tests {
         assert_eq!(
             build_failed(&error, Locale::En),
             "Error: date must use YYYY-MM-DD or an RFC 3339 date-time"
+        );
+
+        let error = ApplicationError::Build(BuildError::ResolvePagePlacements(
+            PageOverrideError::PageOutOfRange {
+                page_number: 4,
+                page_count: 3,
+            },
+        ));
+
+        assert_eq!(
+            build_failed(&error, Locale::Ja),
+            "エラー: ページ番号 4 は入力画像のページ数 3 を超えています"
+        );
+        assert_eq!(
+            build_failed(&error, Locale::En),
+            "Error: page number 4 exceeds the available image count 3"
         );
     }
 }

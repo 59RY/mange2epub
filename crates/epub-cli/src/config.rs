@@ -105,6 +105,7 @@ impl BookConfiguration {
             image_directory: resolve_path(configuration_path, self.images.directory),
             output_path: resolve_path(configuration_path, self.output),
             metadata: self.book.into_publication_metadata(),
+            page_overrides: Vec::new(),
         }
     }
 }
