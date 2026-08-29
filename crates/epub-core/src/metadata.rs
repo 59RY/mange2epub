@@ -1,5 +1,7 @@
 use std::{error::Error, fmt};
 
+use time::{Date, Month, OffsetDateTime, format_description::well_known::Rfc3339};
+
 /// 利用者が指定する書誌情報
 ///
 /// CLI や将来の設定ファイルはこの構造を作る。
@@ -11,6 +13,9 @@ pub struct PublicationMetadata {
     pub creators: Vec<CreatorMetadata>,
     pub description: Option<String>,
     pub publisher: Option<String>,
+    pub date: Option<String>,
+    pub types: Vec<String>,
+    pub subjects: Vec<String>,
     pub language: String,
     pub identifier: Option<String>,
 }
@@ -45,6 +50,10 @@ pub enum MetadataError {
     EmptyCreatorAlternateScriptLanguage,
     EmptyDescription,
     EmptyPublisher,
+    EmptyDate,
+    InvalidDate,
+    EmptyType,
+    EmptySubject,
     EmptyLanguage,
     EmptyIdentifier,
 }
@@ -58,6 +67,9 @@ impl PublicationMetadata {
             creators: Vec::new(),
             description: None,
             publisher: None,
+            date: None,
+            types: Vec::new(),
+            subjects: Vec::new(),
             language: "ja".to_owned(),
             identifier: None,
         }
@@ -71,6 +83,20 @@ impl PublicationMetadata {
         require_optional_value(&self.title_file_as, MetadataError::EmptyTitleFileAs)?;
         require_optional_value(&self.description, MetadataError::EmptyDescription)?;
         require_optional_value(&self.publisher, MetadataError::EmptyPublisher)?;
+        require_optional_value(&self.date, MetadataError::EmptyDate)?;
+        if self
+            .date
+            .as_deref()
+            .is_some_and(|date| !is_valid_date(date))
+        {
+            return Err(MetadataError::InvalidDate);
+        }
+        for value in &self.types {
+            require_value(value, MetadataError::EmptyType)?;
+        }
+        for subject in &self.subjects {
+            require_value(subject, MetadataError::EmptySubject)?;
+        }
         require_value(&self.language, MetadataError::EmptyLanguage)?;
         require_optional_value(&self.identifier, MetadataError::EmptyIdentifier)?;
 
@@ -108,6 +134,13 @@ impl CreatorMetadata {
 
 impl fmt::Display for MetadataError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if matches!(self, Self::InvalidDate) {
+            return write!(
+                formatter,
+                "date must use YYYY-MM-DD or an RFC 3339 date-time"
+            );
+        }
+
         let field = match self {
             Self::EmptyTitle => "title",
             Self::EmptyTitleFileAs => "title file-as",
@@ -118,12 +151,42 @@ impl fmt::Display for MetadataError {
             Self::EmptyCreatorAlternateScriptLanguage => "creator alternate-script language",
             Self::EmptyDescription => "description",
             Self::EmptyPublisher => "publisher",
+            Self::EmptyDate => "date",
+            Self::EmptyType => "type",
+            Self::EmptySubject => "subject",
             Self::EmptyLanguage => "language",
             Self::EmptyIdentifier => "identifier",
+            Self::InvalidDate => unreachable!("invalid dates are handled before field lookup"),
         };
 
         write!(formatter, "{field} must not be empty")
     }
+}
+
+/// 日付が `YYYY-MM-DD` または RFC 3339 の日時であることを確認する
+fn is_valid_date(value: &str) -> bool {
+    if OffsetDateTime::parse(value, &Rfc3339).is_ok() {
+        return true;
+    }
+
+    if value.len() != 10 || !value.is_ascii() || &value[4..5] != "-" || &value[7..8] != "-" {
+        return false;
+    }
+
+    let Ok(year) = value[0..4].parse::<i32>() else {
+        return false;
+    };
+    let Ok(month_number) = value[5..7].parse::<u8>() else {
+        return false;
+    };
+    let Ok(month) = Month::try_from(month_number) else {
+        return false;
+    };
+    let Ok(day) = value[8..10].parse::<u8>() else {
+        return false;
+    };
+
+    Date::from_calendar_date(year, month, day).is_ok()
 }
 
 impl Error for MetadataError {}
@@ -186,10 +249,51 @@ mod tests {
                 metadata_with_empty_publisher(),
                 MetadataError::EmptyPublisher,
             ),
+            (metadata_with_empty_date(), MetadataError::EmptyDate),
+            (metadata_with_empty_type(), MetadataError::EmptyType),
+            (metadata_with_empty_subject(), MetadataError::EmptySubject),
         ];
 
         for (metadata, expected_error) in cases {
             assert_eq!(metadata.validate(), Err(expected_error));
+        }
+    }
+
+    #[test]
+    // 日付のみ、UTC、UTC オフセット付きの日時を受け付ける
+    fn accepts_supported_publication_date_formats() {
+        for date in [
+            "2026-08-31",
+            "2026-08-31T15:00:00Z",
+            "2026-09-01T00:00:00+09:00",
+            "2026-08-31T08:00:00-07:00",
+        ] {
+            let mut metadata = PublicationMetadata::new("書籍のタイトル".to_owned());
+            metadata.date = Some(date.to_owned());
+
+            assert!(metadata.validate().is_ok());
+        }
+    }
+
+    #[test]
+    // 存在しない日付時刻、形式外の値、タイムゾーンのない日時を受け付けない
+    fn rejects_an_invalid_publication_date() {
+        for date in [
+            "2026-02-30",                // 存在しない日付
+            "2026-13-32",                // 存在しない日付
+            "0000-00-00",                // 存在しない日付
+            "2026-3-1",                  // 形式外(ゼロ埋めされていない)
+            "２０２６－０４－０２",      // 形式外(全角)
+            "2025/11/02",                // 形式外(スラッシュ区切り)
+            "2026-08-30T15:00:00",       // タイムゾーンがない
+            "2026-08-30T78:00:00Z",      // 存在しない時刻
+            "2026-08-30T22:75:90Z",      // 存在しない時刻
+            "2026-09-02T02:00:00+50:00", // RFC 3339 のオフセット上限を超過
+        ] {
+            let mut metadata = PublicationMetadata::new("書籍のタイトル".to_owned());
+            metadata.date = Some(date.to_owned());
+
+            assert_eq!(metadata.validate(), Err(MetadataError::InvalidDate));
         }
     }
 
@@ -258,6 +362,27 @@ mod tests {
     fn metadata_with_empty_publisher() -> PublicationMetadata {
         let mut metadata = PublicationMetadata::new("書籍のタイトル".to_owned());
         metadata.publisher = Some("  ".to_owned());
+        metadata
+    }
+
+    /// Date が空白だけである書誌情報を作る
+    fn metadata_with_empty_date() -> PublicationMetadata {
+        let mut metadata = PublicationMetadata::new("書籍のタイトル".to_owned());
+        metadata.date = Some("  ".to_owned());
+        metadata
+    }
+
+    /// Type が空白だけである書誌情報を作る
+    fn metadata_with_empty_type() -> PublicationMetadata {
+        let mut metadata = PublicationMetadata::new("書籍のタイトル".to_owned());
+        metadata.types = vec!["\t".to_owned()];
+        metadata
+    }
+
+    /// Subject が空白だけである書誌情報を作る
+    fn metadata_with_empty_subject() -> PublicationMetadata {
+        let mut metadata = PublicationMetadata::new("書籍のタイトル".to_owned());
+        metadata.subjects = vec!["\n".to_owned()];
         metadata
     }
 

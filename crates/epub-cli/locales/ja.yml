@@ -31,6 +31,10 @@ error:
   empty_creator_alternate_script_language: "著者の別表記の言語を空にすることはできません"
   empty_description: "説明文を空にすることはできません"
   empty_publisher: "発行元を空にすることはできません"
+  empty_date: "出版日時を空にすることはできません"
+  invalid_date: "出版日時は YYYY-MM-DD または RFC 3339 形式の日時で指定してください"
+  empty_type: "内容の性質またはジャンルを空にすることはできません"
+  empty_subject: "主題を空にすることはできません"
   empty_language: "言語を空にすることはできません"
   empty_identifier: "identifier を空にすることはできません"
 image:

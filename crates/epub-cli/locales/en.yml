@@ -31,6 +31,10 @@ error:
   empty_creator_alternate_script_language: "creator alternate-script language must not be empty"
   empty_description: "description must not be empty"
   empty_publisher: "publisher must not be empty"
+  empty_date: "date must not be empty"
+  invalid_date: "date must use YYYY-MM-DD or an RFC 3339 date-time"
+  empty_type: "type must not be empty"
+  empty_subject: "subject must not be empty"
   empty_language: "language must not be empty"
   empty_identifier: "identifier must not be empty"
 image:

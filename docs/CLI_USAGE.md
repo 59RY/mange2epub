@@ -26,6 +26,9 @@ manga2epub build ./images --output ./book.epub --title "書籍のタイトル"
 | `--creator-alternate-script-language <TAG>` | 関連する 2 引数と `--creator` 指定時に必須 | 別表記の言語タグ |
 | `--description <TEXT>` | 任意 | 説明文 |
 | `--publisher <TEXT>` | 任意 | 発行元 |
+| `--date <DATE>` | 任意 | 出版日時。`YYYY-MM-DD` またはタイムゾーン付きの RFC 3339 形式 |
+| `--type <TEXT>` | 任意 | 内容の性質またはジャンル。繰り返し指定可能 |
+| `--subject <TEXT>` | 任意 | 内容の主題。繰り返し指定可能 |
 | `--language <TAG>` | 任意 | 書籍の言語。省略時は `ja` |
 | `--identifier <TEXT>` | 任意 | Primary Identifier。省略時は UUID を生成 |
 | `--locale <ja または en>` | 任意 | CLI メッセージの表示ロケール |
@@ -33,6 +36,8 @@ manga2epub build ./images --output ./book.epub --title "書籍のタイトル"
 現在の直接指定では、著者、役割、別表記はそれぞれ 1 件だけ指定できます。複数件を指定する場合は YAML 設定ファイルを使います。
 
 `--creator-alternate-script` と `--creator-alternate-script-language` は、`--creator` とともに一組で指定します。
+
+`--date` の例は、日付のみなら `2026-08-31`、UTC の日時なら `2026-08-31T15:00:00Z`、日本標準時の日時なら `2026-09-01T00:00:00+09:00` です。入力した日付やタイムゾーンは変換せずに出力します。
 
 ## YAML 設定ファイルを使う
 
@@ -53,6 +58,9 @@ manga2epub build --config ./book.yaml
 | `book.title_file_as` | 任意 | 文字列 | タイトルの読み |
 | `book.description` | 任意 | 文字列 | 説明文 |
 | `book.publisher` | 任意 | 文字列 | 発行元 |
+| `book.date` | 任意 | 文字列 | 出版日時。`YYYY-MM-DD` またはタイムゾーン付きの RFC 3339 形式 |
+| `book.types` | 任意 | 文字列の配列 | 内容の性質またはジャンル。複数指定可能 |
+| `book.subjects` | 任意 | 文字列の配列 | 内容の主題。複数指定可能 |
 | `book.language` | 任意 | 言語タグ | 省略時は `ja` |
 | `book.identifier` | 任意 | 文字列または `null` | 省略または `null` なら UUID を生成 |
 | `book.creators` | 任意 | 配列 | 著者情報。複数指定可能 |
@@ -82,6 +90,13 @@ book:
   description: |
     ここに書籍の説明を書く。
   publisher: "Yūtenji Publishers"
+  date: "2026-08-31T15:00:00Z"
+  types:
+    - comic
+    - image
+  subjects:
+    - Illustration
+    - Fiction
   identifier: null
 
   creators:

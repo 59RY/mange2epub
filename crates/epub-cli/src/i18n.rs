@@ -90,6 +90,10 @@ fn metadata_error(error: MetadataError, locale: Locale) -> String {
         }
         MetadataError::EmptyDescription => "error.empty_description",
         MetadataError::EmptyPublisher => "error.empty_publisher",
+        MetadataError::EmptyDate => "error.empty_date",
+        MetadataError::InvalidDate => "error.invalid_date",
+        MetadataError::EmptyType => "error.empty_type",
+        MetadataError::EmptySubject => "error.empty_subject",
         MetadataError::EmptyLanguage => "error.empty_language",
         MetadataError::EmptyIdentifier => "error.empty_identifier",
     };
@@ -247,6 +251,18 @@ mod tests {
         assert_eq!(
             build_failed(&error, Locale::En),
             "Error: book title must not be empty"
+        );
+
+        let error =
+            ApplicationError::Build(BuildError::InvalidMetadata(MetadataError::InvalidDate));
+
+        assert_eq!(
+            build_failed(&error, Locale::Ja),
+            "エラー: 出版日時は YYYY-MM-DD または RFC 3339 形式の日時で指定してください"
+        );
+        assert_eq!(
+            build_failed(&error, Locale::En),
+            "Error: date must use YYYY-MM-DD or an RFC 3339 date-time"
         );
     }
 }

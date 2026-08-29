@@ -11,7 +11,7 @@ name = "epub_core"
 
 [dependencies]
 quick-xml = "0.39"
-time = { version = "0.3", features = ["formatting"] }
+time = { version = "0.3", features = ["formatting", "parsing"] }
 uuid = { version = "1", features = ["v4"] }
 zip = { version = "7", default-features = false, features = ["deflate"] }
 

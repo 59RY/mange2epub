@@ -79,6 +79,9 @@ struct BuildArguments {
             "creator_alternate_script_language",
             "description",
             "publisher",
+            "date",
+            "types",
+            "subjects",
             "language",
             "identifier"
         ]
@@ -129,6 +132,18 @@ struct BuildArguments {
     #[arg(long)]
     publisher: Option<String>,
 
+    /// 出版日時
+    #[arg(long)]
+    date: Option<String>,
+
+    /// 内容の性質またはジャンル
+    #[arg(long = "type", value_name = "TEXT")]
+    types: Vec<String>,
+
+    /// 内容の主題
+    #[arg(long = "subject", value_name = "TEXT")]
+    subjects: Vec<String>,
+
     /// 書籍の言語
     #[arg(long)]
     language: Option<String>,
@@ -176,6 +191,9 @@ impl BuildArguments {
                 creators,
                 description: self.description,
                 publisher: self.publisher,
+                date: self.date,
+                types: self.types,
+                subjects: self.subjects,
                 language: self.language.unwrap_or_else(|| "ja".to_owned()),
                 identifier: self.identifier,
             },
@@ -264,6 +282,9 @@ mod tests {
         assert_eq!(request.metadata.language, "ja");
         assert_eq!(request.metadata.title_file_as, None);
         assert!(request.metadata.creators.is_empty());
+        assert_eq!(request.metadata.date, None);
+        assert!(request.metadata.types.is_empty());
+        assert!(request.metadata.subjects.is_empty());
     }
 
     #[test]
@@ -361,6 +382,16 @@ mod tests {
             "説明文",
             "--publisher",
             "発行元",
+            "--date",
+            "2026-08-31T15:00:00Z",
+            "--type",
+            "comic",
+            "--type",
+            "image",
+            "--subject",
+            "Illustration",
+            "--subject",
+            "Fiction",
             "--language",
             "ja",
             "--identifier",
@@ -379,6 +410,12 @@ mod tests {
         );
         assert_eq!(request.metadata.description.as_deref(), Some("説明文"));
         assert_eq!(request.metadata.publisher.as_deref(), Some("発行元"));
+        assert_eq!(
+            request.metadata.date.as_deref(),
+            Some("2026-08-31T15:00:00Z")
+        );
+        assert_eq!(request.metadata.types, ["comic", "image"]);
+        assert_eq!(request.metadata.subjects, ["Illustration", "Fiction"]);
         assert_eq!(request.metadata.language, "ja");
         assert_eq!(
             request.metadata.identifier.as_deref(),
@@ -450,6 +487,9 @@ mod tests {
             creator_alternate_script_language: None,
             description: None,
             publisher: None,
+            date: None,
+            types: Vec::new(),
+            subjects: Vec::new(),
             language: None,
             identifier: None,
         }

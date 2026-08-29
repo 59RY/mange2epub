@@ -37,6 +37,8 @@ fn builds_the_jpeg_fixture_with_a_generated_identifier() {
             "ja-Kana",
             "--publisher",
             "Test Publishers",
+            "--date",
+            "2026-08-31",
             "--language",
             "ja",
         ],
@@ -48,6 +50,9 @@ fn builds_the_jpeg_fixture_with_a_generated_identifier() {
         "ジェイペグインテグレーションフィクスチャ",
         "JPEG 書籍が正しく作成されているかどうかのテストです。",
     );
+    assert!(package.contains("<dc:date>2026-08-31</dc:date>"));
+    assert!(!package.contains("<dc:type>"));
+    assert!(!package.contains("<dc:subject>"));
     assert_generated_uuid_identifier(&package);
 }
 
@@ -77,6 +82,16 @@ fn builds_the_png_fixture_with_the_specified_identifier() {
             "ja-Kana",
             "--publisher",
             "Test Publishers",
+            "--date",
+            "2026-08-31T15:00:00Z",
+            "--type",
+            "comic",
+            "--type",
+            "image",
+            "--subject",
+            "Illustration",
+            "--subject",
+            "Fiction",
             "--language",
             "ja",
             "--identifier",
@@ -90,6 +105,8 @@ fn builds_the_png_fixture_with_the_specified_identifier() {
         "ピングインテグレーションフィクスチャ",
         "PNG 書籍が正しく作成されているかどうかのテストです。",
     );
+    assert!(package.contains("<dc:date>2026-08-31T15:00:00Z</dc:date>"));
+    assert_repeated_metadata(&package);
     assert!(
         package.contains(
             "<dc:identifier id=\"pub-id\">urn:test:59RY.manga2epub.integrationTest.pngFixture</dc:identifier>"
@@ -120,6 +137,13 @@ book:
         - lang: ja-Kana
           value: テスト
     - name: editor
+  date: "2026-09-01T00:00:00+09:00"
+  types:
+    - comic
+    - image
+  subjects:
+    - Illustration
+    - Fiction
   language: ja
 images:
   directory: {}
@@ -150,6 +174,8 @@ images:
         "<meta property=\"alternate-script\" refines=\"#creator-0000\" xml:lang=\"ja-Kana\">テスト</meta>"
     ));
     assert!(package.contains("<dc:creator id=\"creator-0001\">editor</dc:creator>"));
+    assert!(package.contains("<dc:date>2026-09-01T00:00:00+09:00</dc:date>"));
+    assert_repeated_metadata(&package);
     assert_generated_uuid_identifier(&package);
 }
 
@@ -193,6 +219,21 @@ fn assert_common_metadata(package: &str, title: &str, title_file_as: &str, descr
     assert!(package.contains(&format!("<dc:description>{description}</dc:description>")));
     assert!(package.contains("<dc:publisher>Test Publishers</dc:publisher>"));
     assert!(package.contains("<dc:language>ja</dc:language>"));
+}
+
+// 繰り返し可能な type と subject が、指定順で個別の要素として出力されることを確認する
+fn assert_repeated_metadata(package: &str) {
+    assert_eq!(package.matches("<dc:type>").count(), 2);
+    let comic_position = package.find("<dc:type>comic</dc:type>").unwrap();
+    let image_position = package.find("<dc:type>image</dc:type>").unwrap();
+    assert!(comic_position < image_position);
+
+    assert_eq!(package.matches("<dc:subject>").count(), 2);
+    let illustration_position = package
+        .find("<dc:subject>Illustration</dc:subject>")
+        .unwrap();
+    let fiction_position = package.find("<dc:subject>Fiction</dc:subject>").unwrap();
+    assert!(illustration_position < fiction_position);
 }
 
 // identifier 未指定時は UUID を含む urn:uuid の値が生成されることを確認する
