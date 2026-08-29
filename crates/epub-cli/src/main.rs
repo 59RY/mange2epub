@@ -83,7 +83,8 @@ struct BuildArguments {
             "types",
             "subjects",
             "language",
-            "identifier"
+            "identifier",
+            "image_order"
         ]
     )]
     config: Option<PathBuf>,
@@ -91,6 +92,10 @@ struct BuildArguments {
     /// ページ画像が入ったディレクトリ
     #[arg(required_unless_present = "config")]
     image_directory: Option<PathBuf>,
+
+    /// ページ画像の明示順序
+    #[arg(long, value_name = "FILE")]
+    image_order: Vec<PathBuf>,
 
     /// 生成する EPUB ファイルのパス
     #[arg(short, long, required_unless_present = "config")]
@@ -176,12 +181,14 @@ impl BuildArguments {
             })
             .into_iter()
             .collect();
+        let image_order = (!self.image_order.is_empty()).then_some(self.image_order);
 
         Ok(BuildRequest {
             // clap が config 未指定時に必須入力を検証済みであるため、ここでは値が存在する
             image_directory: self
                 .image_directory
                 .expect("clap requires an image directory without --config"),
+            image_order,
             output_path: self
                 .output
                 .expect("clap requires an output path without --config"),
@@ -278,6 +285,7 @@ mod tests {
 
         assert_eq!(locale, None);
         assert_eq!(request.image_directory.to_string_lossy(), "./images");
+        assert_eq!(request.image_order, None);
         assert_eq!(request.output_path.to_string_lossy(), "./book.epub");
         assert_eq!(request.metadata.title, "書籍のタイトル");
         assert_eq!(request.metadata.language, "ja");
@@ -286,6 +294,36 @@ mod tests {
         assert_eq!(request.metadata.date, None);
         assert!(request.metadata.types.is_empty());
         assert!(request.metadata.subjects.is_empty());
+    }
+
+    #[test]
+    // --image-order を繰り返した順序を、画像ディレクトリとは独立してコアへ渡す
+    fn parses_an_explicit_image_order() {
+        let cli = Cli::try_parse_from([
+            "manga2epub",
+            "build",
+            "./images",
+            "--output",
+            "./book.epub",
+            "--title",
+            "書籍のタイトル",
+            "--image-order",
+            "page-02.png",
+            "--image-order",
+            "page-01.jpg",
+        ])
+        .unwrap();
+
+        let Command::Build(arguments) = cli.command;
+        let request = arguments.into_build_request().unwrap();
+
+        assert_eq!(
+            request.image_order,
+            Some(vec![
+                PathBuf::from("page-02.png"),
+                PathBuf::from("page-01.jpg"),
+            ])
+        );
     }
 
     #[test]
@@ -478,6 +516,7 @@ mod tests {
         BuildArguments {
             config: None,
             image_directory: Some(image_directory),
+            image_order: Vec::new(),
             output: Some(output),
             title: Some("書籍のタイトル".to_owned()),
             title_file_as: None,

@@ -1,5 +1,6 @@
 use std::{
     cmp::Ordering,
+    collections::HashSet,
     error::Error,
     fmt,
     fs::{self, File},
@@ -84,6 +85,13 @@ pub enum ImageCollectionError {
         path: PathBuf,
         reason: InvalidImageReason,
     },
+    EmptyImageOrder,
+    DuplicateImage {
+        path: PathBuf,
+    },
+    UnsupportedImage {
+        path: PathBuf,
+    },
     NoImages {
         directory: PathBuf,
     },
@@ -103,6 +111,13 @@ impl fmt::Display for ImageCollectionError {
             Self::InvalidImage { path, reason } => {
                 write!(f, "invalid image {}: {reason}", path.display())
             }
+            Self::EmptyImageOrder => write!(f, "explicit image order must not be empty"),
+            Self::DuplicateImage { path } => {
+                write!(f, "image is specified more than once: {}", path.display())
+            }
+            Self::UnsupportedImage { path } => {
+                write!(f, "unsupported image format: {}", path.display())
+            }
             Self::NoImages { directory } => {
                 write!(f, "no supported images found in: {}", directory.display())
             }
@@ -117,7 +132,11 @@ impl Error for ImageCollectionError {
             Self::ReadDirectory { source, .. }
             | Self::ReadDirectoryEntry { source, .. }
             | Self::ReadImage { source, .. } => Some(source),
-            Self::InvalidImage { .. } | Self::NoImages { .. } => None,
+            Self::InvalidImage { .. }
+            | Self::EmptyImageOrder
+            | Self::DuplicateImage { .. }
+            | Self::UnsupportedImage { .. }
+            | Self::NoImages { .. } => None,
         }
     }
 }
@@ -153,14 +172,56 @@ pub fn collect_images(directory: &Path) -> Result<Vec<SourceImage>, ImageCollect
     }
     images
         .into_iter()
-        .map(|(path, format)| {
-            Ok(SourceImage {
-                dimensions: read_image_dimensions(&path, format)?,
-                path,
-                format,
-            })
+        .map(|(path, format)| source_image(path, format))
+        .collect()
+}
+
+/// 指定されたパスだけを、指定順のまま EPUB へ収録する画像として収集する
+///
+/// 相対パスは `directory` を基準に解決する。入力ディレクトリの走査は行わない。
+pub fn collect_images_in_order(
+    directory: &Path,
+    image_order: &[PathBuf],
+) -> Result<Vec<SourceImage>, ImageCollectionError> {
+    if image_order.is_empty() {
+        return Err(ImageCollectionError::EmptyImageOrder);
+    }
+
+    let paths = image_order
+        .iter()
+        .map(|requested_path| {
+            if requested_path.is_absolute() {
+                requested_path.clone()
+            } else {
+                directory.join(requested_path)
+            }
+        })
+        .collect::<Vec<_>>();
+    let mut unique_paths = HashSet::with_capacity(paths.len());
+    for path in &paths {
+        if !unique_paths.insert(path) {
+            return Err(ImageCollectionError::DuplicateImage { path: path.clone() });
+        }
+    }
+
+    paths
+        .into_iter()
+        .map(|path| {
+            let format = image_format_from_extension(&path)
+                .ok_or_else(|| ImageCollectionError::UnsupportedImage { path: path.clone() })?;
+
+            source_image(path, format)
         })
         .collect()
+}
+
+/// 1 ファイルを検証し、EPUB へ収録する画像情報へ変換する
+fn source_image(path: PathBuf, format: ImageFormat) -> Result<SourceImage, ImageCollectionError> {
+    Ok(SourceImage {
+        dimensions: read_image_dimensions(&path, format)?,
+        path,
+        format,
+    })
 }
 
 /// 拡張子から対応する画像形式を判定する
@@ -401,7 +462,10 @@ fn trim_leading_zeroes(value: &[u8]) -> &[u8] {
 #[cfg(test)]
 // 画像形式の検出、画像サイズの読み取り、自然順を小さな入力ファイルで検証する
 mod tests {
-    use super::{ImageDimensions, ImageFormat, collect_images, natural_compare};
+    use super::{
+        ImageCollectionError, ImageDimensions, ImageFormat, collect_images,
+        collect_images_in_order, natural_compare,
+    };
     use std::{
         fs,
         path::{Path, PathBuf},
@@ -453,6 +517,70 @@ mod tests {
         let directory = TestDirectory::new();
         fs::write(directory.path().join("page-1.png"), [0; 24]).unwrap();
         assert!(collect_images(directory.path()).is_err());
+    }
+
+    #[test]
+    // JPEG と PNG を、ファイル名の自然順ではなく利用者が指定した順に収集する
+    fn collects_jpeg_and_png_in_the_explicit_order() {
+        let directory = TestDirectory::new();
+        write_png(directory.path().join("page-1.png"), 1200, 1759);
+        write_jpeg(directory.path().join("page-2.jpg"), 1200, 1800);
+
+        let images = collect_images_in_order(
+            directory.path(),
+            &[PathBuf::from("page-2.jpg"), PathBuf::from("page-1.png")],
+        )
+        .unwrap();
+
+        assert_eq!(
+            images
+                .iter()
+                .map(|image| image.path.file_name().unwrap())
+                .collect::<Vec<_>>(),
+            ["page-2.jpg", "page-1.png"]
+        );
+        assert_eq!(images[0].format, ImageFormat::Jpeg);
+        assert_eq!(images[1].format, ImageFormat::Png);
+    }
+
+    #[test]
+    // 同じ画像を複数ページとして意図せず収録しないよう、重複指定を拒否する
+    fn rejects_a_duplicate_image_in_the_explicit_order() {
+        let directory = TestDirectory::new();
+        write_jpeg(directory.path().join("page.jpg"), 1200, 1800);
+
+        let error = collect_images_in_order(
+            directory.path(),
+            &[PathBuf::from("page.jpg"), PathBuf::from("page.jpg")],
+        )
+        .unwrap_err();
+
+        assert!(matches!(error, ImageCollectionError::DuplicateImage { .. }));
+    }
+
+    #[test]
+    // 明示順序を指定した場合は、1 枚以上の画像を必要とする
+    fn rejects_an_empty_explicit_image_order() {
+        let directory = TestDirectory::new();
+
+        let error = collect_images_in_order(directory.path(), &[]).unwrap_err();
+
+        assert!(matches!(error, ImageCollectionError::EmptyImageOrder));
+    }
+
+    #[test]
+    // 明示順序では非対応ファイルを無視せず、入力エラーとして返す
+    fn rejects_an_unsupported_file_in_the_explicit_order() {
+        let directory = TestDirectory::new();
+        fs::write(directory.path().join("notes.txt"), b"not an image").unwrap();
+
+        let error =
+            collect_images_in_order(directory.path(), &[PathBuf::from("notes.txt")]).unwrap_err();
+
+        assert!(matches!(
+            error,
+            ImageCollectionError::UnsupportedImage { .. }
+        ));
     }
 
     #[test]

@@ -5,14 +5,16 @@ use uuid::Uuid;
 
 use crate::{
     DocumentError, ImageCollectionError, MetadataError, MinimalMetadata, PackageError,
-    PageOverride, PageOverrideError, PublicationMetadata, collect_images, generate_documents,
-    resolve_page_placements, write_epub,
+    PageOverride, PageOverrideError, PublicationMetadata, collect_images, collect_images_in_order,
+    generate_documents, resolve_page_placements, write_epub,
 };
 
 /// 1回の EPUB 生成に必要な入力値
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BuildRequest {
     pub image_directory: PathBuf,
+    /// 未指定時は自然順、指定時は列挙された画像だけを指定順で使用する
+    pub image_order: Option<Vec<PathBuf>>,
     pub output_path: PathBuf,
     pub metadata: PublicationMetadata,
     /// 1 始まりのページ番号で指定する配置の上書き
@@ -70,10 +72,14 @@ impl Error for BuildError {
     }
 }
 
-/// `image_directory` 直下にある対応画像から EPUB を生成する。
+/// 入力画像を自然順または明示順で収集し、EPUB を生成する
 pub fn build_epub(request: &BuildRequest) -> Result<BuildReport, BuildError> {
     let metadata = resolve_metadata(&request.metadata)?;
-    let images = collect_images(&request.image_directory).map_err(BuildError::CollectImages)?;
+    let images = match request.image_order.as_deref() {
+        Some(image_order) => collect_images_in_order(&request.image_directory, image_order),
+        None => collect_images(&request.image_directory),
+    }
+    .map_err(BuildError::CollectImages)?;
     let placements = resolve_page_placements(images.len(), &request.page_overrides)
         .map_err(BuildError::ResolvePagePlacements)?;
     let documents = generate_documents(&images, &metadata, &placements)
@@ -136,6 +142,7 @@ mod tests {
         let output = directory.path().join("book.epub");
         let request = BuildRequest {
             image_directory: directory.path().to_path_buf(),
+            image_order: None,
             output_path: output.clone(),
             metadata: PublicationMetadata::new("書籍のタイトル".to_owned()),
             page_overrides: Vec::new(),
@@ -165,6 +172,7 @@ mod tests {
         metadata.identifier = Some("https://example.com/books/123".to_owned());
         let request = BuildRequest {
             image_directory: directory.path().to_path_buf(),
+            image_order: None,
             output_path: output.clone(),
             metadata,
             page_overrides: Vec::new(),
@@ -186,6 +194,7 @@ mod tests {
         let output = directory.path().join("book.epub");
         let request = BuildRequest {
             image_directory: directory.path().to_path_buf(),
+            image_order: None,
             output_path: output.clone(),
             metadata: PublicationMetadata::new("書籍のタイトル".to_owned()),
             page_overrides: Vec::new(),
@@ -204,6 +213,7 @@ mod tests {
     fn rejects_invalid_metadata_before_collecting_images() {
         let request = BuildRequest {
             image_directory: PathBuf::from("does-not-need-to-exist"),
+            image_order: None,
             output_path: PathBuf::from("does-not-need-to-be-created.epub"),
             metadata: PublicationMetadata::new(" ".to_owned()),
             page_overrides: Vec::new(),
@@ -227,6 +237,7 @@ mod tests {
         let output = directory.path().join("book.epub");
         let request = BuildRequest {
             image_directory: directory.path().to_path_buf(),
+            image_order: None,
             output_path: output.clone(),
             metadata: PublicationMetadata::new("書籍のタイトル".to_owned()),
             page_overrides: vec![PageOverride {
@@ -251,6 +262,41 @@ mod tests {
                 "<itemref idref=\"page-0005\" properties=\"rendition:page-spread-left\"/>"
             )
         );
+    }
+
+    #[test]
+    // 明示順序を manifest と spine へ反映し、ページ配置を並べ替え後に適用する
+    fn builds_an_epub_with_an_explicit_image_order() {
+        let directory = TestDirectory::new();
+        write_jpeg(directory.path().join("page-1.jpg"));
+        write_png(directory.path().join("page-2.png"));
+        let output = directory.path().join("book.epub");
+        let request = BuildRequest {
+            image_directory: directory.path().to_path_buf(),
+            image_order: Some(vec![
+                PathBuf::from("page-2.png"),
+                PathBuf::from("page-1.jpg"),
+            ]),
+            output_path: output.clone(),
+            metadata: PublicationMetadata::new("書籍のタイトル".to_owned()),
+            page_overrides: vec![PageOverride {
+                page_number: 2,
+                placement: PagePlacement::Center,
+            }],
+        };
+
+        build_epub(&request).unwrap();
+
+        let package = package_document(&output);
+        assert!(package.contains(
+            "<item id=\"image-0000\" href=\"images/image-0000.png\" media-type=\"image/png\" properties=\"cover-image\"/>"
+        ));
+        assert!(package.contains(
+            "<item id=\"image-0001\" href=\"images/image-0001.jpg\" media-type=\"image/jpeg\"/>"
+        ));
+        assert!(package.contains(
+            "<itemref idref=\"page-0001\" properties=\"rendition:page-spread-center\"/>"
+        ));
     }
 
     fn package_document(path: &Path) -> String {

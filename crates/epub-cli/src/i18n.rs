@@ -149,6 +149,19 @@ fn image_error(error: &ImageCollectionError, locale: Locale) -> String {
             path = path.display(),
             reason = invalid_image_reason(*reason, locale)
         ),
+        ImageCollectionError::EmptyImageOrder => {
+            t!("error.empty_image_order", locale = locale)
+        }
+        ImageCollectionError::DuplicateImage { path } => t!(
+            "error.duplicate_image",
+            locale = locale,
+            path = path.display()
+        ),
+        ImageCollectionError::UnsupportedImage { path } => t!(
+            "error.unsupported_image",
+            locale = locale,
+            path = path.display()
+        ),
         ImageCollectionError::NoImages { directory } => t!(
             "error.no_images",
             locale = locale,
@@ -249,6 +262,21 @@ mod tests {
         assert_eq!(
             build_failed(&error, Locale::En),
             "Error: no supported images found in: images"
+        );
+
+        let error = ApplicationError::Build(BuildError::CollectImages(
+            ImageCollectionError::DuplicateImage {
+                path: PathBuf::from("images/page.jpg"),
+            },
+        ));
+
+        assert_eq!(
+            build_failed(&error, Locale::Ja),
+            "エラー: 同じ画像が明示順序に複数回指定されています: images/page.jpg"
+        );
+        assert_eq!(
+            build_failed(&error, Locale::En),
+            "Error: image is specified more than once in the explicit order: images/page.jpg"
         );
     }
 
