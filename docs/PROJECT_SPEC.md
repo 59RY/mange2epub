@@ -716,6 +716,12 @@ images:
   # 設定ファイルからの相対パスで指定する
   directory: "./images"
 
+  # 指定した画像だけを、記述した順序でページとして使用する
+  order:
+    - "cover.png"
+    - "page-01.jpg"
+    - "page-02.png"
+
 # 省略時は第 1 ページを center とし、以降を right、left の順に配置する
 pages:
   overrides:
@@ -723,13 +729,13 @@ pages:
       placement: center
 ```
 
-`version`、`output`、`book.title`、`images.directory` は必須とする。`book` のそれ以外の項目と `pages` は任意とし、`creators`、`roles`、`alternate_scripts`、`types`、`subjects`、`pages.overrides` はそれぞれ複数指定できる。
+`version`、`output`、`book.title`、`images.directory` は必須とする。`book` のそれ以外の項目、`images.order`、`pages` は任意とし、`creators`、`roles`、`alternate_scripts`、`types`、`subjects`、`images.order`、`pages.overrides` はそれぞれ複数指定できる。
 
 `output` と `images.directory` の相対パスは、設定ファイル自身の親ディレクトリを基準に解決する。例えば `config/book.yaml` 内の `./images` は `config/images` を指す。
 
 このバージョンでは未知のキーをエラーとする。入力の誤記を見落とさずに検出するためである。
 
-このバージョンでは `pages.overrides` だけをページ指定として受け付ける。`layout`、`toc`、`images.order` は、対応する機能と同時に追加するまで受け付けない。ページ配置の指定は [#20](#20-ページ配置の指定)、明示順序の設計は [#26](#26-ファイル順序) を参照する。
+このバージョンでは `images.order` と `pages.overrides` をページ指定として受け付ける。`layout` と `toc` は、対応する機能と同時に追加するまで受け付けない。ページ配置の指定は [#20](#20-ページ配置の指定)、明示順序の設計は [#20.4](#204-ページ順序の指定) を参照する。
 
 ---
 
@@ -766,7 +772,7 @@ pages:
 
 ## 20.1 page 番号
 
-YAML 上の `page` は 1 始まりとする。`page: 1` は第 1 画像、すなわち表紙を指す。内部の Rust 実装では 0 始まりで扱ってよい。
+YAML 上の `page` は 1 始まりとする。`page: 1` は、`images.order` を指定した場合はその先頭画像、指定しない場合は自然順で先頭の画像を指す。内部の Rust 実装では 0 始まりで扱ってよい。
 
 表紙を含め、すべてのページに `left`、`right`、`center` を指定できる。通常は表紙を `center` のままにするが、全ページ指定では任意の配置を選択できる。
 
@@ -784,7 +790,7 @@ YAML 上の `page` は 1 始まりとする。`page: 1` は第 1 画像、すな
 
 ## 20.4 ページ順序の指定
 
-画像の取り込み順は、次の 2 種類を扱える設計とする。
+画像の取り込み順は、次の 2 種類を扱う。
 
 ### デフォルト
 
@@ -792,7 +798,9 @@ YAML 上の `page` は 1 始まりとする。`page: 1` は第 1 画像、すな
 
 ### 明示指定
 
-利用者が 1 ファイル単位で順番を指定した場合は、その指定を優先する。CLI/YAML では、将来的に次のような形式を扱える構造を想定する。
+利用者が 1 ファイル単位で順番を指定した場合は、その指定を優先する。明示順序を指定した場合、リストにある画像だけを記述順でページとして使用する。入力ディレクトリ内にあるが、リストにない画像は使用しない。
+
+YAML では `images.order` を使用する。
 
 ```yaml
 images:
@@ -804,9 +812,20 @@ images:
     - "page-02.jpg"
 ```
 
-または、GUI で管理するページ順序を YAML へ保存できる構造を想定する。具体的な最終スキーマは、自然順ソートおよび GUI のデータモデルと合わせて確定する。
+直接指定の CLI では、`--image-order` を繰り返して指定する。
 
-明示指定時に、指定されていないファイルを自動的に末尾へ追加するか、未指定ファイルをエラーとするかは実装時に決定する。
+```bash
+manga2epub build ./images \
+  --output ./book.epub \
+  --title "書籍のタイトル" \
+  --image-order "cover.jpg" \
+  --image-order "page-01.jpg" \
+  --image-order "page-02.jpg"
+```
+
+`images.order` または `--image-order` を省略した場合は、自然順を使用する。空の明示順序、重複した画像指定、存在しない画像または対応していない画像の指定はエラーとする。
+
+GUI は、利用者が並べ替えた画像のパス一覧を同じ順序で `epub-core` へ渡す。GUI 側で EPUB のページ順序ロジックを再実装しない。
 
 ---
 
@@ -821,6 +840,18 @@ manga2epub build ./images --output ./book.epub --title "書籍のタイトル"
 ```
 
 `<image_directory>`、`--output`、`--title` を指定して EPUB を生成する。画像ディレクトリ内の対応画像を自然順でページとして扱う。
+
+画像の順序を直接指定する場合は、`--image-order` を繰り返す。
+
+```bash
+manga2epub build ./images \
+  --output ./book.epub \
+  --title "書籍のタイトル" \
+  --image-order "cover.jpg" \
+  --image-order "page-01.jpg"
+```
+
+`--image-order` を指定した場合は、指定された画像だけを記述順でページとして使用する。設定ファイルを使う場合は、同じ機能を `images.order` で指定する。
 
 ## 21.2 メタデータ指定
 
@@ -1166,7 +1197,7 @@ EPUB 3.3 固定レイアウト
 
 ## Phase 6 — TOC
 
-`nav.xhtml` を生成する。
+利用者が指定した目次項目を `nav.xhtml` へ出力する。
 
 ## Phase 7 — CLI 完成度向上
 
