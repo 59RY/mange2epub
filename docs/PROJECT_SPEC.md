@@ -171,7 +171,7 @@ EPUB 3.3 をターゲットとする。OPF の package 要素は、EPUB 3.x 仕�
 <meta property="rendition:spread">landscape</meta>
 ```
 
-これにより、横画面など Synthetic Spread を利用できる環境で見開きを構成できる。
+これにより、ビューアーが Synthetic Spread を利用する環境では見開きを構成できる。
 
 設定値として、将来的に次を扱える構造にする。
 
@@ -254,6 +254,21 @@ EPUB 3.3 向けの内部表現・基本出力では、`rendition:` 付き表記�
 ```
 
 初期バージョンでの実装は必須ではない。
+
+## 8.3 ビューアーによる解釈
+
+`rendition:page-spread-left`、`rendition:page-spread-right`、`rendition:page-spread-center` は、ビューアーが Synthetic Spread を作る場合にだけ適用される。EPUB の生成側が正しいプロパティを出力しても、各ビューアーの表示結果を強制することはできない。
+
+本ツールは EPUB 3 の標準プロパティを出力し続ける。対応していないビューアーに合わせて空白ページを挿入する、画像へ余白を追加する、画像を複製する、ベンダー固有の出力を標準出力へ混在させる、といった回避処理は行わない。
+
+> [!NOTE]
+> 2026 年 8 月現在では、以下のビューアーでは `page-spread-*` による左右・中央配置を期待どおりには反映されなかったことを確認している。
+> - Apple Books (macOS Tahoe)
+> - [Google Play Books](https://play.google.com/books) (WebUI)
+> - [OpenComic](https://opencomic.app/) (v1.6.5)
+> - [Panels](https://apps.apple.com/jp/app/panels-comic-reader/id1236567663)
+>
+> この記録は、検証時点の確認結果を示すものであり、各アプリの互換性を保証するものではない。
 
 ---
 
@@ -1097,10 +1112,12 @@ override（`Page 4 -> Center`）が指定された場合、`Page 5` が `right` 
 
 少なくとも次で実機確認する。
 
-- iBooks（macOS）
+- Apple Books
 - Google Play Books（WebUI、Phase 6 以降は iOS アプリも）
 
 可能であれば他のビューアーでも確認したい。ビューアーごとの差異は、EPUB 仕様上の問題と個別実装の問題を分けて記録する。
+
+`page-spread-*` の表示はビューアーの実装に依存するため、対応していないアプリで左右・中央配置が反映されないことは EPUB 生成の不具合とは扱わない。生成物の正しさは、OPF の spine に期待するプロパティが出力されていることと EPUBCheck で確認する。
 
 ---
 
@@ -1193,7 +1210,7 @@ EPUB 3.3 固定レイアウト
 
 # 31. Compatibility Profile
 
-将来的にビューアー固有の互換処理が必要になった場合、コアの EPUB 3.3 出力へ直接混ぜず、compatibility profile として分離する。候補は `standard`、`legacy`、`apple`、`google-play` 。ただし、実際に必要性が確認されるまで profile 自体を実装しない。特定ベンダー向けタグを「念のため」で大量に出力しない。
+将来的にビューアー固有の互換処理が必要になった場合、コアの EPUB 3.3 出力へ直接混ぜず、compatibility profile として分離する。候補は `standard`、`legacy`、`apple`、`google-play` 。ただし、実際に必要性が確認されるまで profile 自体を実装しない。ビューアーが標準の `page-spread-*` を解釈しないことだけを理由に profile や回避処理を追加しない。特定ベンダー向けタグを「念のため」で大量に出力しない。
 
 ---
 
