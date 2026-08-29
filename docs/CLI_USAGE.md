@@ -72,10 +72,18 @@ manga2epub build --config ./book.yaml
 | `book.creators[].alternate_scripts[].value` | 別表記ごとに必須 | 文字列 | 別表記 |
 | `images` | 必須 | マップ | 入力画像の設定 |
 | `images.directory` | 必須 | パス | ページ画像が入ったディレクトリ |
+| `pages` | 任意 | マップ | ページ配置の上書き設定 |
+| `pages.overrides` | 任意 | 配列 | ページ配置の上書き。複数指定可能 |
+| `pages.overrides[].page` | 上書きごとに必須 | 1 始まりの整数 | 配置を上書きするページ番号 |
+| `pages.overrides[].placement` | 上書きごとに必須 | `left`、`right`、`center` | ページ配置 |
 
 `output` と `images.directory` の相対パスは、設定ファイル自身の親ディレクトリを基準に解決します。例えば `config/book.yaml` 内の `./images` は `config/images` を指します。
 
-未知のキーはエラーです。現在は `layout`、`pages`、`toc`、画像の明示順序を受け付けません。
+ページ番号は入力画像を自然順で並べた後の 1 始まりの番号です。指定しない場合、1 ページ目は `center`、2 ページ目以降は `right` と `left` を交互に配置します。`center` を指定したページの次の未指定ページは `right` から再開します。`left` または `right` を指定しても、後続の既定配置は変わりません。
+
+`page: 0`、画像数を超えるページ番号、同じページ番号への重複指定はエラーです。ページ配置の上書きは YAML 設定ファイルだけで指定できます。
+
+未知のキーはエラーです。現在は `layout`、`toc`、画像の明示順序を受け付けません。
 
 ### 記述例
 
@@ -116,4 +124,9 @@ book:
 
 images:
   directory: "./images"
+
+pages:
+  overrides:
+    - page: 4
+      placement: center
 ```
