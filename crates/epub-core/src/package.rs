@@ -197,7 +197,10 @@ mod tests {
     use zip::{CompressionMethod, ZipArchive};
 
     use super::{MIMETYPE, write_epub};
-    use crate::{ImageDimensions, ImageFormat, MinimalMetadata, SourceImage, generate_documents};
+    use crate::{
+        GeneratedDocuments, ImageDimensions, ImageFormat, MinimalMetadata, SourceImage,
+        default_page_placement, generate_documents,
+    };
 
     static NEXT_TEST_DIRECTORY: AtomicUsize = AtomicUsize::new(0);
 
@@ -205,7 +208,7 @@ mod tests {
     fn writes_an_ocf_archive_with_an_uncompressed_first_mimetype_entry() {
         let directory = TestDirectory::new();
         let images = images(directory.path());
-        let documents = generate_documents(&images, &metadata()).unwrap();
+        let documents = generate_default_documents(&images, &metadata());
         let output = directory.path().join("book.epub");
 
         write_epub(&output, &images, &documents).unwrap();
@@ -228,7 +231,7 @@ mod tests {
     fn stores_the_original_image_bytes_without_modification() {
         let directory = TestDirectory::new();
         let images = images(directory.path());
-        let documents = generate_documents(&images, &metadata()).unwrap();
+        let documents = generate_default_documents(&images, &metadata());
         let output = directory.path().join("book.epub");
 
         write_epub(&output, &images, &documents).unwrap();
@@ -260,7 +263,7 @@ mod tests {
                 height: 1759,
             },
         }];
-        let documents = generate_documents(&images, &metadata()).unwrap();
+        let documents = generate_default_documents(&images, &metadata());
         let output = directory.path().join("book.epub");
 
         write_epub(&output, &images, &documents).unwrap();
@@ -280,7 +283,7 @@ mod tests {
     fn writes_every_generated_resource_to_its_expected_path() {
         let directory = TestDirectory::new();
         let images = images(directory.path());
-        let documents = generate_documents(&images, &metadata()).unwrap();
+        let documents = generate_default_documents(&images, &metadata());
         let output = directory.path().join("book.epub");
 
         write_epub(&output, &images, &documents).unwrap();
@@ -302,7 +305,7 @@ mod tests {
     fn refuses_to_overwrite_an_existing_output_file() {
         let directory = TestDirectory::new();
         let images = images(directory.path());
-        let documents = generate_documents(&images, &metadata()).unwrap();
+        let documents = generate_default_documents(&images, &metadata());
         let output = directory.path().join("book.epub");
         fs::write(&output, "existing output").unwrap();
 
@@ -326,6 +329,18 @@ mod tests {
             language: "ja".to_owned(),
             modified: "2026-08-26T00:00:00Z".to_owned(),
         }
+    }
+
+    /// 既定配置を使って、パッケージテスト用の EPUB 文書を生成する
+    fn generate_default_documents(
+        images: &[SourceImage],
+        metadata: &MinimalMetadata,
+    ) -> GeneratedDocuments {
+        let placements = (0..images.len())
+            .map(default_page_placement)
+            .collect::<Vec<_>>();
+
+        generate_documents(images, metadata, &placements).unwrap()
     }
 
     fn images(directory: &Path) -> Vec<SourceImage> {

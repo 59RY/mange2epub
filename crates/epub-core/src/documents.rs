@@ -5,10 +5,7 @@ use quick_xml::{
     events::{BytesDecl, BytesEnd, BytesStart, BytesText, Event},
 };
 
-use crate::{
-    CreatorMetadata, ImageDimensions, PagePlacement, PublicationMetadata, SourceImage,
-    default_page_placement,
-};
+use crate::{CreatorMetadata, ImageDimensions, PagePlacement, PublicationMetadata, SourceImage};
 
 const CONTAINER_PATH: &str = "EPUB/package.opf";
 const PAGE_CSS_PATH: &str = "styles/page.css";
@@ -78,6 +75,10 @@ pub struct GeneratedDocuments {
 #[derive(Debug)]
 pub enum DocumentError {
     NoPages,
+    PagePlacementCountMismatch {
+        image_count: usize,
+        placement_count: usize,
+    },
     WriteXml(io::Error),
     InvalidUtf8(std::string::FromUtf8Error),
 }
@@ -86,6 +87,13 @@ impl fmt::Display for DocumentError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::NoPages => write!(formatter, "cannot generate EPUB documents without pages"),
+            Self::PagePlacementCountMismatch {
+                image_count,
+                placement_count,
+            } => write!(
+                formatter,
+                "cannot generate documents for {image_count} images with {placement_count} page placements"
+            ),
             Self::WriteXml(_) => write!(formatter, "could not write an EPUB XML document"),
             Self::InvalidUtf8(_) => write!(formatter, "generated XML was not valid UTF-8"),
         }
@@ -96,6 +104,7 @@ impl Error for DocumentError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::NoPages => None,
+            Self::PagePlacementCountMismatch { .. } => None,
             Self::WriteXml(source) => Some(source),
             Self::InvalidUtf8(source) => Some(source),
         }
@@ -107,11 +116,19 @@ impl Error for DocumentError {
 /// - 最初の画像が共通の論理的な viewport を決める
 /// - 生成する EPUB 内のパスには、入力画像のパスを意図的に含めない
 /// - EPUB 内のパスは画像の番号で正規化する
+/// - ページ配置の数は画像数と一致している必要がある
 pub fn generate_documents(
     images: &[SourceImage],
     metadata: &MinimalMetadata,
+    placements: &[PagePlacement],
 ) -> Result<GeneratedDocuments, DocumentError> {
     let viewport = images.first().ok_or(DocumentError::NoPages)?.dimensions;
+    if images.len() != placements.len() {
+        return Err(DocumentError::PagePlacementCountMismatch {
+            image_count: images.len(),
+            placement_count: placements.len(),
+        });
+    }
     let pages = images
         .iter()
         .enumerate()
@@ -122,7 +139,7 @@ pub fn generate_documents(
 
     Ok(GeneratedDocuments {
         container_xml: generate_container_xml()?,
-        package_opf: generate_package_opf(images, metadata)?,
+        package_opf: generate_package_opf(images, metadata, placements)?,
         navigation_xhtml: generate_navigation_xhtml(&metadata.title, &metadata.language)?,
         page_css: page_css(),
         pages,
@@ -160,6 +177,7 @@ fn generate_container_xml() -> Result<String, DocumentError> {
 fn generate_package_opf(
     images: &[SourceImage],
     metadata: &MinimalMetadata,
+    placements: &[PagePlacement],
 ) -> Result<String, DocumentError> {
     // パッケージ文書は、メタデータ、manifest、読書順をまとめて持つ
     let mut writer = xml_writer();
@@ -298,9 +316,9 @@ fn generate_package_opf(
         "spine",
         &[("page-progression-direction", "rtl")],
     )?;
-    for index in 0..images.len() {
+    for (index, placement) in placements.iter().copied().enumerate() {
         let page_id = page_id(index);
-        let placement = placement_property(default_page_placement(index));
+        let placement = placement_property(placement);
         empty(
             &mut writer,
             "itemref",
@@ -630,15 +648,15 @@ fn into_string(writer: Writer<Vec<u8>>) -> Result<String, DocumentError> {
 mod tests {
     use std::path::PathBuf;
 
-    use super::{MinimalMetadata, generate_documents};
+    use super::{DocumentError, MinimalMetadata, generate_documents};
     use crate::{
-        AlternateScript, CreatorMetadata, ImageDimensions, ImageFormat, PublicationMetadata,
-        SourceImage,
+        AlternateScript, CreatorMetadata, ImageDimensions, ImageFormat, PagePlacement,
+        PublicationMetadata, SourceImage, default_page_placement,
     };
 
     #[test]
     fn generates_expected_fixed_layout_documents() {
-        let documents = generate_documents(&images(), &metadata()).unwrap();
+        let documents = generate_documents(&images(), &metadata(), &default_placements(3)).unwrap();
 
         assert!(
             documents
@@ -708,7 +726,7 @@ mod tests {
         let mut metadata = metadata();
         metadata.title = "A & B < C".to_owned();
 
-        let documents = generate_documents(&images(), &metadata).unwrap();
+        let documents = generate_documents(&images(), &metadata, &default_placements(3)).unwrap();
 
         assert!(documents.package_opf.contains("A &amp; B &lt; C"));
         assert!(documents.navigation_xhtml.contains("A &amp; B &lt; C"));
@@ -720,7 +738,8 @@ mod tests {
         let mut images = images();
         images[0].format = ImageFormat::Png;
 
-        let documents = generate_documents(&images, &metadata()).unwrap();
+        let documents =
+            generate_documents(&images, &metadata(), &default_placements(images.len())).unwrap();
 
         assert!(documents.package_opf.contains(
             "<item id=\"image-0000\" href=\"images/image-0000.png\" media-type=\"image/png\" properties=\"cover-image\"/>"
@@ -744,7 +763,7 @@ mod tests {
             "2026-08-27T00:00:00Z".to_owned(),
         );
 
-        let documents = generate_documents(&images(), &metadata).unwrap();
+        let documents = generate_documents(&images(), &metadata, &default_placements(3)).unwrap();
 
         assert!(documents.package_opf.contains(
             "<dc:identifier id=\"pub-id\">https://example.com/books/123</dc:identifier>"
@@ -827,9 +846,28 @@ mod tests {
 
     #[test]
     fn rejects_an_empty_image_list() {
-        let error = generate_documents(&[], &metadata()).unwrap_err();
+        let error = generate_documents(&[], &metadata(), &[]).unwrap_err();
 
-        assert!(matches!(error, super::DocumentError::NoPages));
+        assert!(matches!(error, DocumentError::NoPages));
+    }
+
+    #[test]
+    // 画像数と配置数が異なる場合は、不完全な spine を生成せずに拒否する
+    fn rejects_page_placement_count_mismatches() {
+        let error = generate_documents(&images(), &metadata(), &[]).unwrap_err();
+
+        assert!(matches!(
+            error,
+            DocumentError::PagePlacementCountMismatch {
+                image_count: 3,
+                placement_count: 0,
+            }
+        ));
+    }
+
+    /// 既定配置を使用する文書生成テスト用のページ配置一覧を作る
+    fn default_placements(page_count: usize) -> Vec<PagePlacement> {
+        (0..page_count).map(default_page_placement).collect()
     }
 
     fn metadata() -> MinimalMetadata {

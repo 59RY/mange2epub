@@ -5,7 +5,8 @@ use uuid::Uuid;
 
 use crate::{
     DocumentError, ImageCollectionError, MetadataError, MinimalMetadata, PackageError,
-    PublicationMetadata, collect_images, generate_documents, write_epub,
+    PageOverride, PageOverrideError, PublicationMetadata, collect_images, generate_documents,
+    resolve_page_placements, write_epub,
 };
 
 /// 1回の EPUB 生成に必要な入力値
@@ -14,6 +15,8 @@ pub struct BuildRequest {
     pub image_directory: PathBuf,
     pub output_path: PathBuf,
     pub metadata: PublicationMetadata,
+    /// 1 始まりのページ番号で指定する配置の上書き
+    pub page_overrides: Vec<PageOverride>,
 }
 
 /// EPUB 生成が成功したときに返す結果
@@ -28,6 +31,7 @@ pub struct BuildReport {
 pub enum BuildError {
     InvalidMetadata(MetadataError),
     CollectImages(ImageCollectionError),
+    ResolvePagePlacements(PageOverrideError),
     GenerateDocuments(DocumentError),
     WritePackage(PackageError),
     TruncateModifiedTime(time::error::ComponentRange),
@@ -39,6 +43,7 @@ impl fmt::Display for BuildError {
         match self {
             Self::InvalidMetadata(error) => write!(formatter, "{error}"),
             Self::CollectImages(error) => write!(formatter, "{error}"),
+            Self::ResolvePagePlacements(error) => write!(formatter, "{error}"),
             Self::GenerateDocuments(error) => write!(formatter, "{error}"),
             Self::WritePackage(error) => write!(formatter, "{error}"),
             Self::TruncateModifiedTime(_) => {
@@ -56,6 +61,7 @@ impl Error for BuildError {
         match self {
             Self::InvalidMetadata(error) => Some(error),
             Self::CollectImages(error) => Some(error),
+            Self::ResolvePagePlacements(error) => Some(error),
             Self::GenerateDocuments(error) => Some(error),
             Self::WritePackage(error) => Some(error),
             Self::TruncateModifiedTime(error) => Some(error),
@@ -68,8 +74,10 @@ impl Error for BuildError {
 pub fn build_epub(request: &BuildRequest) -> Result<BuildReport, BuildError> {
     let metadata = resolve_metadata(&request.metadata)?;
     let images = collect_images(&request.image_directory).map_err(BuildError::CollectImages)?;
-    let documents =
-        generate_documents(&images, &metadata).map_err(BuildError::GenerateDocuments)?;
+    let placements = resolve_page_placements(images.len(), &request.page_overrides)
+        .map_err(BuildError::ResolvePagePlacements)?;
+    let documents = generate_documents(&images, &metadata, &placements)
+        .map_err(BuildError::GenerateDocuments)?;
     write_epub(&request.output_path, &images, &documents).map_err(BuildError::WritePackage)?;
 
     Ok(BuildReport {
@@ -116,7 +124,7 @@ mod tests {
     use zip::ZipArchive;
 
     use super::{BuildError, BuildRequest, build_epub};
-    use crate::{MetadataError, PublicationMetadata};
+    use crate::{MetadataError, PageOverride, PagePlacement, PublicationMetadata};
 
     static NEXT_TEST_DIRECTORY: AtomicUsize = AtomicUsize::new(0);
 
@@ -130,6 +138,7 @@ mod tests {
             image_directory: directory.path().to_path_buf(),
             output_path: output.clone(),
             metadata: PublicationMetadata::new("書籍のタイトル".to_owned()),
+            page_overrides: Vec::new(),
         };
 
         let report = build_epub(&request).unwrap();
@@ -158,6 +167,7 @@ mod tests {
             image_directory: directory.path().to_path_buf(),
             output_path: output.clone(),
             metadata,
+            page_overrides: Vec::new(),
         };
 
         build_epub(&request).unwrap();
@@ -178,6 +188,7 @@ mod tests {
             image_directory: directory.path().to_path_buf(),
             output_path: output.clone(),
             metadata: PublicationMetadata::new("書籍のタイトル".to_owned()),
+            page_overrides: Vec::new(),
         };
 
         build_epub(&request).unwrap();
@@ -195,6 +206,7 @@ mod tests {
             image_directory: PathBuf::from("does-not-need-to-exist"),
             output_path: PathBuf::from("does-not-need-to-be-created.epub"),
             metadata: PublicationMetadata::new(" ".to_owned()),
+            page_overrides: Vec::new(),
         };
 
         let error = build_epub(&request).unwrap_err();
@@ -203,6 +215,42 @@ mod tests {
             error,
             BuildError::InvalidMetadata(MetadataError::EmptyTitle)
         ));
+    }
+
+    #[test]
+    // 解決済み配置を spine へ渡し、center の直後を right から再開する
+    fn builds_an_epub_with_page_placement_overrides() {
+        let directory = TestDirectory::new();
+        for page_number in 1..=6 {
+            write_jpeg(directory.path().join(format!("page-{page_number}.jpg")));
+        }
+        let output = directory.path().join("book.epub");
+        let request = BuildRequest {
+            image_directory: directory.path().to_path_buf(),
+            output_path: output.clone(),
+            metadata: PublicationMetadata::new("書籍のタイトル".to_owned()),
+            page_overrides: vec![PageOverride {
+                page_number: 4,
+                placement: PagePlacement::Center,
+            }],
+        };
+
+        build_epub(&request).unwrap();
+
+        let package = package_document(&output);
+        assert!(package.contains(
+            "<itemref idref=\"page-0003\" properties=\"rendition:page-spread-center\"/>"
+        ));
+        assert!(
+            package.contains(
+                "<itemref idref=\"page-0004\" properties=\"rendition:page-spread-right\"/>"
+            )
+        );
+        assert!(
+            package.contains(
+                "<itemref idref=\"page-0005\" properties=\"rendition:page-spread-left\"/>"
+            )
+        );
     }
 
     fn package_document(path: &Path) -> String {

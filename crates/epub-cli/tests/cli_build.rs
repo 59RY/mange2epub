@@ -114,7 +114,7 @@ fn builds_the_png_fixture_with_the_specified_identifier() {
     );
 }
 
-// YAML 設定ファイルから EPUB を生成し、複数の著者情報と相対出力先を検証する
+// YAML 設定ファイルから EPUB を生成し、書誌情報とページ配置を検証する
 #[test]
 fn builds_the_png_fixture_from_a_yaml_configuration_file() {
     let directory = TestDirectory::new();
@@ -147,6 +147,10 @@ book:
   language: ja
 images:
   directory: {}
+pages:
+  overrides:
+    - page: 4
+      placement: center
 "#,
             yaml_string(&input_directory)
         ),
@@ -177,6 +181,12 @@ images:
     assert!(package.contains("<dc:date>2026-09-01T00:00:00+09:00</dc:date>"));
     assert_repeated_metadata(&package);
     assert_generated_uuid_identifier(&package);
+    assert_page_placement(&package, 0, "center");
+    assert_page_placement(&package, 1, "right");
+    assert_page_placement(&package, 2, "left");
+    assert_page_placement(&package, 3, "center");
+    assert_page_placement(&package, 4, "right");
+    assert_page_placement(&package, 5, "left");
 }
 
 // 指定した fixture と CLI オプションから EPUB を生成し、OPF パッケージ文書を読み取る
@@ -234,6 +244,13 @@ fn assert_repeated_metadata(package: &str) {
         .unwrap();
     let fiction_position = package.find("<dc:subject>Fiction</dc:subject>").unwrap();
     assert!(illustration_position < fiction_position);
+}
+
+// YAML で指定した配置と、その後の既定配置が OPF の spine に出力されることを確認する
+fn assert_page_placement(package: &str, page_index: usize, placement: &str) {
+    assert!(package.contains(&format!(
+        "<itemref idref=\"page-{page_index:04}\" properties=\"rendition:page-spread-{placement}\"/>"
+    )));
 }
 
 // identifier 未指定時は UUID を含む urn:uuid の値が生成されることを確認する

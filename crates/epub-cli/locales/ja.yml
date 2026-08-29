@@ -10,6 +10,7 @@ error:
   invalid_image: "無効な画像です %{path}: %{reason}"
   no_images: "対応画像が見つかりません: %{path}"
   no_pages: "ページがないため EPUB 文書を生成できません"
+  page_placement_count_mismatch: "入力画像数とページ配置数が一致しません"
   write_xml: "EPUB の XML 文書を書き込めませんでした"
   invalid_utf8: "生成した XML が有効な UTF-8 ではありません"
   create_output: "EPUB 出力ファイルを作成できませんでした: %{path}"
@@ -37,6 +38,9 @@ error:
   empty_subject: "主題を空にすることはできません"
   empty_language: "言語を空にすることはできません"
   empty_identifier: "identifier を空にすることはできません"
+  page_number_must_be_positive: "ページ番号は 1 以上を指定してください"
+  page_number_out_of_range: "ページ番号 %{page_number} は入力画像のページ数 %{page_count} を超えています"
+  duplicate_page_number: "ページ番号 %{page_number} が複数回指定されています"
 image:
   invalid_header: "画像ヘッダーが無効です"
   invalid_dimensions: "画像の幅と高さは 1 ピクセル以上である必要があります"

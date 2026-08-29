@@ -20,4 +20,6 @@ pub use images::{
 };
 pub use metadata::{AlternateScript, CreatorMetadata, MetadataError, PublicationMetadata};
 pub use package::{PackageError, write_epub};
-pub use pages::{PagePlacement, default_page_placement};
+pub use pages::{
+    PageOverride, PageOverrideError, PagePlacement, default_page_placement, resolve_page_placements,
+};

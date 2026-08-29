@@ -171,7 +171,7 @@ EPUB 3.3 をターゲットとする。OPF の package 要素は、EPUB 3.x 仕�
 <meta property="rendition:spread">landscape</meta>
 ```
 
-これにより、横画面など Synthetic Spread を利用できる環境で見開きを構成できる。
+これにより、ビューアーが Synthetic Spread を利用する環境では見開きを構成できる。
 
 設定値として、将来的に次を扱える構造にする。
 
@@ -255,6 +255,21 @@ EPUB 3.3 向けの内部表現・基本出力では、`rendition:` 付き表記�
 
 初期バージョンでの実装は必須ではない。
 
+## 8.3 ビューアーによる解釈
+
+`rendition:page-spread-left`、`rendition:page-spread-right`、`rendition:page-spread-center` は、ビューアーが Synthetic Spread を作る場合にだけ適用される。EPUB の生成側が正しいプロパティを出力しても、各ビューアーの表示結果を強制することはできない。
+
+本ツールは EPUB 3 の標準プロパティを出力し続ける。対応していないビューアーに合わせて空白ページを挿入する、画像へ余白を追加する、画像を複製する、ベンダー固有の出力を標準出力へ混在させる、といった回避処理は行わない。
+
+> [!NOTE]
+> 2026 年 8 月現在では、以下のビューアーでは `page-spread-*` による左右・中央配置を期待どおりには反映されなかったことを確認している。
+> - Apple Books (macOS Tahoe)
+> - [Google Play Books](https://play.google.com/books) (WebUI)
+> - [OpenComic](https://opencomic.app/) (v1.6.5)
+> - [Panels](https://apps.apple.com/jp/app/panels-comic-reader/id1236567663)
+>
+> この記録は、検証時点の確認結果を示すものであり、各アプリの互換性を保証するものではない。
+
 ---
 
 # 9. デフォルトページ配置
@@ -286,11 +301,13 @@ Page 1 = center
 Page 2 = right
 Page 3 = left
 Page 4 = center  ← override
-Page 5 = left    ← 通常の自動判定
-Page 6 = right
+Page 5 = right   ← center の直後なので right から再開
+Page 6 = left
 ```
 
-のように、override によって後続ページの自動計算をシフトさせない。後続ページも含めた特殊な構成が必要な場合は、利用者が必要なページをすべて指定する。
+`center` を指定したページは見開きの区切りとして扱う。その直後の未指定ページから、自動配置を `right`、`left` の順に再開する。
+
+`left` または `right` の指定は、そのページだけに適用する。後続ページの自動配置は変えない。後続ページも含めた特殊な構成が必要な場合は、利用者が必要なページをすべて指定する。
 
 ## 9.3 フルカスタマイズ
 
@@ -698,21 +715,29 @@ book:
 images:
   # 設定ファイルからの相対パスで指定する
   directory: "./images"
+
+# 省略時は第 1 ページを center とし、以降を right、left の順に配置する
+pages:
+  overrides:
+    - page: 4
+      placement: center
 ```
 
-`version`、`output`、`book.title`、`images.directory` は必須とする。`book` のそれ以外の項目は任意とし、`creators`、`roles`、`alternate_scripts`、`types`、`subjects` はそれぞれ複数指定できる。
+`version`、`output`、`book.title`、`images.directory` は必須とする。`book` のそれ以外の項目と `pages` は任意とし、`creators`、`roles`、`alternate_scripts`、`types`、`subjects`、`pages.overrides` はそれぞれ複数指定できる。
 
 `output` と `images.directory` の相対パスは、設定ファイル自身の親ディレクトリを基準に解決する。例えば `config/book.yaml` 内の `./images` は `config/images` を指す。
 
 このバージョンでは未知のキーをエラーとする。入力の誤記を見落とさずに検出するためである。
 
-`layout`、`pages`、`toc`、画像の明示順序は、対応する機能と同時に追加する。現在のバージョンではこれらのキーを受け付けない。ページ指定の設計は [#20](#20-ページ指定スキーマの考え方)、明示順序の設計は [#26](#26-ファイル順序) を参照する。
+このバージョンでは `pages.overrides` だけをページ指定として受け付ける。`layout`、`toc`、`images.order` は、対応する機能と同時に追加するまで受け付けない。ページ配置の指定は [#20](#20-ページ配置の指定)、明示順序の設計は [#26](#26-ファイル順序) を参照する。
 
 ---
 
-# 20. ページ指定スキーマの考え方
+# 20. ページ配置の指定
 
-`overrides` は疎な指定と完全指定の両方に使う。通常は以下のように一部だけ指定する。
+`pages` を省略した場合、または `pages.overrides` が空の場合は、ページ配置に [#9](#9-デフォルトページ配置) の既定値を使用する。`pages.overrides` を指定した場合は、指定されたページだけ既定値を上書きする。
+
+`overrides` は一部の指定と全ページ指定の両方に使用する。通常は以下のように一部だけ指定する。
 
 ```yaml
 pages:
@@ -721,7 +746,7 @@ pages:
       placement: center
 ```
 
-完全に手動指定したい場合は、以下のように全ページを指定する。部分カスタマイズと完全カスタマイズで別々の仕様は作らない。
+すべてのページを手動で指定する場合も、同じ `overrides` を使用する。部分的な指定と全ページ指定で別の形式は設けない。
 
 ```yaml
 pages:
@@ -741,9 +766,23 @@ pages:
 
 ## 20.1 page 番号
 
-YAML 上の `page` は 1-origin とする。`page: 1` は第 1 画像、すなわち表紙を指す。内部 Rust 実装では 0-origin でも構わない。
+YAML 上の `page` は 1 始まりとする。`page: 1` は第 1 画像、すなわち表紙を指す。内部の Rust 実装では 0 始まりで扱ってよい。
 
-## 20.2 ページ順序の指定
+表紙を含め、すべてのページに `left`、`right`、`center` を指定できる。通常は表紙を `center` のままにするが、全ページ指定では任意の配置を選択できる。
+
+## 20.2 `placement` の値
+
+`placement` には `left`、`right`、`center` のいずれかを指定する。値は小文字で指定し、それ以外の値はエラーとする。
+
+`center` を指定したページは見開きの区切りとして扱う。直後の未指定ページは `right` とし、以降は `right`、`left` を交互に配置する。`left` と `right` の指定は後続ページの自動配置を変えない。
+
+## 20.3 入力の検証
+
+`page` には 1 以上の整数を指定する。入力画像の枚数を超えるページ番号、同じページ番号の重複指定、未知のキーはエラーとする。
+
+ページ番号の範囲は、入力画像を読み取り、画像枚数が確定した後に検証する。
+
+## 20.4 ページ順序の指定
 
 画像の取り込み順は、次の 2 種類を扱える設計とする。
 
@@ -1038,7 +1077,9 @@ Page 3 -> Left
 Page 4 -> Right
 ```
 
-override（`Page 4 -> Center`）が指定された場合、`Page 5` の自動配置が影響を受けないことを確認する。
+override（`Page 4 -> Center`）が指定された場合、`Page 5` が `right` から再開することを確認する。`left` または `right` の override を指定した場合は、後続ページの自動配置が変わらないことを確認する。
+
+`page: 0`、範囲外のページ番号、同じページ番号の重複指定、無効な `placement` をエラーとして検出することを確認する。
 
 自然順ソートについて、`page-1.jpg` `page-2.jpg` `page-10.jpg` が正しい順序になることを確認する。明示的なファイル順序指定については、指定順がデフォルトの自然順より優先されることを確認する。
 
@@ -1071,10 +1112,12 @@ override（`Page 4 -> Center`）が指定された場合、`Page 5` の自動配
 
 少なくとも次で実機確認する。
 
-- iBooks（macOS）
+- Apple Books
 - Google Play Books（WebUI、Phase 6 以降は iOS アプリも）
 
 可能であれば他のビューアーでも確認したい。ビューアーごとの差異は、EPUB 仕様上の問題と個別実装の問題を分けて記録する。
+
+`page-spread-*` の表示はビューアーの実装に依存するため、対応していないアプリで左右・中央配置が反映されないことは EPUB 生成の不具合とは扱わない。生成物の正しさは、OPF の spine に期待するプロパティが出力されていることと EPUBCheck で確認する。
 
 ---
 
@@ -1167,7 +1210,7 @@ EPUB 3.3 固定レイアウト
 
 # 31. Compatibility Profile
 
-将来的にビューアー固有の互換処理が必要になった場合、コアの EPUB 3.3 出力へ直接混ぜず、compatibility profile として分離する。候補は `standard`、`legacy`、`apple`、`google-play` 。ただし、実際に必要性が確認されるまで profile 自体を実装しない。特定ベンダー向けタグを「念のため」で大量に出力しない。
+将来的にビューアー固有の互換処理が必要になった場合、コアの EPUB 3.3 出力へ直接混ぜず、compatibility profile として分離する。候補は `standard`、`legacy`、`apple`、`google-play` 。ただし、実際に必要性が確認されるまで profile 自体を実装しない。ビューアーが標準の `page-spread-*` を解釈しないことだけを理由に profile や回避処理を追加しない。特定ベンダー向けタグを「念のため」で大量に出力しない。
 
 ---
 

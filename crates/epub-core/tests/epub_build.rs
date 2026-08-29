@@ -68,6 +68,7 @@ fn assert_fixture_build(
         image_directory: input_directory.clone(),
         output_path: output_path.clone(),
         metadata: PublicationMetadata::new("Integration Test Book".to_owned()),
+        page_overrides: Vec::new(),
     };
 
     let report = build_epub(&request).unwrap();

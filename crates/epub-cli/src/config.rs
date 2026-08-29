@@ -4,7 +4,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use epub_core::{AlternateScript, BuildRequest, CreatorMetadata, PublicationMetadata};
+use epub_core::{
+    AlternateScript, BuildRequest, CreatorMetadata, PageOverride, PagePlacement,
+    PublicationMetadata,
+};
 use serde::Deserialize;
 
 /// YAML 設定ファイルの読み込み・解釈時に発生しうるエラー
@@ -96,6 +99,8 @@ struct BookConfiguration {
     output: PathBuf,
     book: BookMetadataConfiguration,
     images: ImageConfiguration,
+    #[serde(default)]
+    pages: PageConfiguration,
 }
 
 impl BookConfiguration {
@@ -105,6 +110,7 @@ impl BookConfiguration {
             image_directory: resolve_path(configuration_path, self.images.directory),
             output_path: resolve_path(configuration_path, self.output),
             metadata: self.book.into_publication_metadata(),
+            page_overrides: self.pages.into_page_overrides(),
         }
     }
 }
@@ -114,6 +120,62 @@ impl BookConfiguration {
 #[serde(deny_unknown_fields)]
 struct ImageConfiguration {
     directory: PathBuf,
+}
+
+/// `pages` セクションに記述するページ配置の上書き設定
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PageConfiguration {
+    #[serde(default)]
+    overrides: Vec<PageOverrideConfiguration>,
+}
+
+impl PageConfiguration {
+    /// YAML の配置設定を、EPUB 生成用のページ配置へ変換する
+    fn into_page_overrides(self) -> Vec<PageOverride> {
+        self.overrides
+            .into_iter()
+            .map(PageOverrideConfiguration::into_page_override)
+            .collect()
+    }
+}
+
+/// `pages.overrides` の各要素に記述するページ配置
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PageOverrideConfiguration {
+    page: usize,
+    placement: PagePlacementConfiguration,
+}
+
+impl PageOverrideConfiguration {
+    /// YAML のページ番号と配置を、EPUB 生成用のページ配置へ変換する
+    fn into_page_override(self) -> PageOverride {
+        PageOverride {
+            page_number: self.page,
+            placement: self.placement.into_page_placement(),
+        }
+    }
+}
+
+/// YAML で受け付けるページ配置の名前
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum PagePlacementConfiguration {
+    Left,
+    Right,
+    Center,
+}
+
+impl PagePlacementConfiguration {
+    /// YAML の配置名を、EPUB 生成処理で使うページ配置へ変換する
+    fn into_page_placement(self) -> PagePlacement {
+        match self {
+            Self::Left => PagePlacement::Left,
+            Self::Right => PagePlacement::Right,
+            Self::Center => PagePlacement::Center,
+        }
+    }
 }
 
 /// `book` セクションに記述する書誌情報
@@ -232,7 +294,7 @@ fn resolve_path(configuration_path: &Path, path: PathBuf) -> PathBuf {
 mod tests {
     use std::path::{Path, PathBuf};
 
-    use epub_core::{AlternateScript, CreatorMetadata};
+    use epub_core::{AlternateScript, CreatorMetadata, PageOverride, PagePlacement};
 
     use super::{ConfigError, parse_build_request};
 
@@ -273,6 +335,12 @@ book:
   identifier: urn:test:book
 images:
   directory: images
+pages:
+  overrides:
+    - page: 4
+      placement: center
+    - page: 2
+      placement: left
 "#,
         )
         .unwrap();
@@ -329,6 +397,19 @@ images:
                 },
             ]
         );
+        assert_eq!(
+            request.page_overrides,
+            vec![
+                PageOverride {
+                    page_number: 4,
+                    placement: PagePlacement::Center,
+                },
+                PageOverride {
+                    page_number: 2,
+                    placement: PagePlacement::Left,
+                },
+            ]
+        );
     }
 
     #[test]
@@ -348,6 +429,7 @@ images:
         .unwrap();
 
         assert_eq!(request.metadata.language, "ja");
+        assert!(request.page_overrides.is_empty());
     }
 
     #[test]
@@ -387,6 +469,50 @@ book:
   titel: typo
 images:
   directory: images
+"#,
+        )
+        .unwrap_err();
+
+        assert!(matches!(error, ConfigError::Parse { .. }));
+    }
+
+    #[test]
+    // 配置名の入力を限定し、誤記を既定配置として静かに扱わない
+    fn rejects_an_unknown_page_placement() {
+        let error = parse_build_request(
+            Path::new("book.yaml"),
+            r#"
+version: 1
+output: book.epub
+book:
+  title: 書籍のタイトル
+images:
+  directory: images
+pages:
+  overrides:
+    - page: 2
+      placement: middle
+"#,
+        )
+        .unwrap_err();
+
+        assert!(matches!(error, ConfigError::Parse { .. }));
+    }
+
+    #[test]
+    // pages 内のキーも検証し、将来の設定項目を意図せず受け付けない
+    fn rejects_an_unknown_page_configuration_key() {
+        let error = parse_build_request(
+            Path::new("book.yaml"),
+            r#"
+version: 1
+output: book.epub
+book:
+  title: 書籍のタイトル
+images:
+  directory: images
+pages:
+  overrids: []  # テストの性質上、英単語typoでOK
 "#,
         )
         .unwrap_err();
