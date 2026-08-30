@@ -5,7 +5,10 @@ use quick_xml::{
     events::{BytesDecl, BytesEnd, BytesStart, BytesText, Event},
 };
 
-use crate::{CreatorMetadata, ImageDimensions, PagePlacement, PublicationMetadata, SourceImage};
+use crate::{
+    CreatorMetadata, ImageDimensions, PagePlacement, PublicationMetadata, SourceImage, TocEntry,
+    TocError, validate_toc_entries,
+};
 
 const CONTAINER_PATH: &str = "EPUB/package.opf";
 const PAGE_CSS_PATH: &str = "styles/page.css";
@@ -79,6 +82,7 @@ pub enum DocumentError {
         image_count: usize,
         placement_count: usize,
     },
+    InvalidToc(TocError),
     WriteXml(io::Error),
     InvalidUtf8(std::string::FromUtf8Error),
 }
@@ -94,6 +98,7 @@ impl fmt::Display for DocumentError {
                 formatter,
                 "cannot generate documents for {image_count} images with {placement_count} page placements"
             ),
+            Self::InvalidToc(error) => write!(formatter, "{error}"),
             Self::WriteXml(_) => write!(formatter, "could not write an EPUB XML document"),
             Self::InvalidUtf8(_) => write!(formatter, "generated XML was not valid UTF-8"),
         }
@@ -105,6 +110,7 @@ impl Error for DocumentError {
         match self {
             Self::NoPages => None,
             Self::PagePlacementCountMismatch { .. } => None,
+            Self::InvalidToc(error) => Some(error),
             Self::WriteXml(source) => Some(source),
             Self::InvalidUtf8(source) => Some(source),
         }
@@ -117,10 +123,12 @@ impl Error for DocumentError {
 /// - 生成する EPUB 内のパスには、入力画像のパスを意図的に含めない
 /// - EPUB 内のパスは画像の番号で正規化する
 /// - ページ配置の数は画像数と一致している必要がある
+/// - 目次のページ番号は並べ替え後の画像に対する 1 始まりの番号として扱う
 pub fn generate_documents(
     images: &[SourceImage],
     metadata: &MinimalMetadata,
     placements: &[PagePlacement],
+    toc_entries: &[TocEntry],
 ) -> Result<GeneratedDocuments, DocumentError> {
     let viewport = images.first().ok_or(DocumentError::NoPages)?.dimensions;
     if images.len() != placements.len() {
@@ -129,6 +137,7 @@ pub fn generate_documents(
             placement_count: placements.len(),
         });
     }
+    validate_toc_entries(images.len(), toc_entries).map_err(DocumentError::InvalidToc)?;
     let pages = images
         .iter()
         .enumerate()
@@ -140,7 +149,11 @@ pub fn generate_documents(
     Ok(GeneratedDocuments {
         container_xml: generate_container_xml()?,
         package_opf: generate_package_opf(images, metadata, placements)?,
-        navigation_xhtml: generate_navigation_xhtml(&metadata.title, &metadata.language)?,
+        navigation_xhtml: generate_navigation_xhtml(
+            &metadata.title,
+            &metadata.language,
+            toc_entries,
+        )?,
         page_css: page_css(),
         pages,
     })
@@ -423,8 +436,12 @@ fn write_optional_dc_element(
     Ok(())
 }
 
-fn generate_navigation_xhtml(title: &str, language: &str) -> Result<String, DocumentError> {
-    // 利用者が定義する目次項目がなくても、ナビゲーション文書は必要
+fn generate_navigation_xhtml(
+    title: &str,
+    language: &str,
+    toc_entries: &[TocEntry],
+) -> Result<String, DocumentError> {
+    // 目次を省略した場合も、書籍タイトルで表紙へリンクする項目を生成する
     let mut writer = xml_writer();
     write_declaration(&mut writer)?;
     write_doctype(&mut writer)?;
@@ -444,20 +461,32 @@ fn generate_navigation_xhtml(title: &str, language: &str) -> Result<String, Docu
     start(&mut writer, "body", &[])?;
     start(&mut writer, "nav", &[("epub:type", "toc")])?;
     start(&mut writer, "ol", &[])?;
-    start(&mut writer, "li", &[])?;
-    text_element(
-        &mut writer,
-        "a",
-        &[("href", "pages/page-0000.xhtml")],
-        "Start",
-    )?;
-    end(&mut writer, "li")?;
+    if toc_entries.is_empty() {
+        write_navigation_entry(&mut writer, title, 0)?;
+    } else {
+        for entry in toc_entries {
+            // 目次項目は検証済みであるため、1 始まりから安全に変換できる
+            write_navigation_entry(&mut writer, &entry.label, entry.page_number - 1)?;
+        }
+    }
     end(&mut writer, "ol")?;
     end(&mut writer, "nav")?;
     end(&mut writer, "body")?;
     end(&mut writer, "html")?;
 
     into_string(writer)
+}
+
+/// 目次項目を、対象ページの正規化された XHTML パスとともに出力する
+fn write_navigation_entry(
+    writer: &mut Writer<Vec<u8>>,
+    label: &str,
+    page_index: usize,
+) -> Result<(), DocumentError> {
+    let page_path = page_path(page_index);
+    start(writer, "li", &[])?;
+    text_element(writer, "a", &[("href", &page_path)], label)?;
+    end(writer, "li")
 }
 
 fn generate_page_document(
@@ -651,12 +680,13 @@ mod tests {
     use super::{DocumentError, MinimalMetadata, generate_documents};
     use crate::{
         AlternateScript, CreatorMetadata, ImageDimensions, ImageFormat, PagePlacement,
-        PublicationMetadata, SourceImage, default_page_placement,
+        PublicationMetadata, SourceImage, TocEntry, TocError, default_page_placement,
     };
 
     #[test]
     fn generates_expected_fixed_layout_documents() {
-        let documents = generate_documents(&images(), &metadata(), &default_placements(3)).unwrap();
+        let documents =
+            generate_documents(&images(), &metadata(), &default_placements(3), &[]).unwrap();
 
         assert!(
             documents
@@ -708,6 +738,13 @@ mod tests {
                 .contains("<item id=\"page-0000\" href=\"pages/page-0000.xhtml\" media-type=\"application/xhtml+xml\"/>")
         );
         assert!(documents.navigation_xhtml.contains("epub:type=\"toc\""));
+        assert!(
+            documents
+                .navigation_xhtml
+                .contains("<a href=\"pages/page-0000.xhtml\">Untitled</a>"),
+            "{}",
+            documents.navigation_xhtml
+        );
         assert_eq!(documents.pages.len(), 3);
         assert!(
             documents.pages[0]
@@ -726,10 +763,61 @@ mod tests {
         let mut metadata = metadata();
         metadata.title = "A & B < C".to_owned();
 
-        let documents = generate_documents(&images(), &metadata, &default_placements(3)).unwrap();
+        let documents =
+            generate_documents(&images(), &metadata, &default_placements(3), &[]).unwrap();
 
         assert!(documents.package_opf.contains("A &amp; B &lt; C"));
         assert!(documents.navigation_xhtml.contains("A &amp; B &lt; C"));
+    }
+
+    #[test]
+    // 指定順を維持し、各ページ番号を正規化された XHTML パスへ変換する
+    fn generates_requested_navigation_entries() {
+        let entries = vec![
+            TocEntry {
+                label: "導入".to_owned(),
+                page_number: 2,
+            },
+            TocEntry {
+                label: "本編 & おまけ".to_owned(),
+                page_number: 3,
+            },
+        ];
+
+        let documents =
+            generate_documents(&images(), &metadata(), &default_placements(3), &entries).unwrap();
+
+        let first_entry = documents
+            .navigation_xhtml
+            .find("<a href=\"pages/page-0001.xhtml\">導入</a>")
+            .unwrap();
+        let second_entry = documents
+            .navigation_xhtml
+            .find("<a href=\"pages/page-0002.xhtml\">本編 &amp; おまけ</a>")
+            .unwrap();
+
+        assert!(first_entry < second_entry);
+        assert!(!documents.navigation_xhtml.contains(">Untitled</a>"));
+    }
+
+    #[test]
+    // 入力画像の範囲を超えるリンクを持つ Navigation Document は生成しない
+    fn rejects_a_navigation_entry_out_of_range() {
+        let entries = vec![TocEntry {
+            label: "本編".to_owned(),
+            page_number: 4,
+        }];
+
+        let error = generate_documents(&images(), &metadata(), &default_placements(3), &entries)
+            .unwrap_err();
+
+        assert!(matches!(
+            error,
+            DocumentError::InvalidToc(TocError::PageOutOfRange {
+                page_number: 4,
+                page_count: 3,
+            })
+        ));
     }
 
     #[test]
@@ -739,7 +827,8 @@ mod tests {
         images[0].format = ImageFormat::Png;
 
         let documents =
-            generate_documents(&images, &metadata(), &default_placements(images.len())).unwrap();
+            generate_documents(&images, &metadata(), &default_placements(images.len()), &[])
+                .unwrap();
 
         assert!(documents.package_opf.contains(
             "<item id=\"image-0000\" href=\"images/image-0000.png\" media-type=\"image/png\" properties=\"cover-image\"/>"
@@ -763,7 +852,8 @@ mod tests {
             "2026-08-27T00:00:00Z".to_owned(),
         );
 
-        let documents = generate_documents(&images(), &metadata, &default_placements(3)).unwrap();
+        let documents =
+            generate_documents(&images(), &metadata, &default_placements(3), &[]).unwrap();
 
         assert!(documents.package_opf.contains(
             "<dc:identifier id=\"pub-id\">https://example.com/books/123</dc:identifier>"
@@ -846,7 +936,7 @@ mod tests {
 
     #[test]
     fn rejects_an_empty_image_list() {
-        let error = generate_documents(&[], &metadata(), &[]).unwrap_err();
+        let error = generate_documents(&[], &metadata(), &[], &[]).unwrap_err();
 
         assert!(matches!(error, DocumentError::NoPages));
     }
@@ -854,7 +944,7 @@ mod tests {
     #[test]
     // 画像数と配置数が異なる場合は、不完全な spine を生成せずに拒否する
     fn rejects_page_placement_count_mismatches() {
-        let error = generate_documents(&images(), &metadata(), &[]).unwrap_err();
+        let error = generate_documents(&images(), &metadata(), &[], &[]).unwrap_err();
 
         assert!(matches!(
             error,

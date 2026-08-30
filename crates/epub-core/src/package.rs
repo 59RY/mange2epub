@@ -340,7 +340,7 @@ mod tests {
             .map(default_page_placement)
             .collect::<Vec<_>>();
 
-        generate_documents(images, metadata, &placements).unwrap()
+        generate_documents(images, metadata, &placements, &[]).unwrap()
     }
 
     fn images(directory: &Path) -> Vec<SourceImage> {

@@ -70,6 +70,7 @@ fn assert_fixture_build(
         output_path: output_path.clone(),
         metadata: PublicationMetadata::new("Integration Test Book".to_owned()),
         page_overrides: Vec::new(),
+        toc_entries: Vec::new(),
     };
 
     let report = build_epub(&request).unwrap();

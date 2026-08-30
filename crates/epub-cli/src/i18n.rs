@@ -1,6 +1,6 @@
 use epub_core::{
     BuildError, BuildReport, DocumentError, ImageCollectionError, InvalidImageReason,
-    MetadataError, PackageError, PageOverrideError,
+    MetadataError, PackageError, PageOverrideError, TocError,
 };
 use rust_i18n::t;
 
@@ -185,10 +185,32 @@ fn document_error(error: &DocumentError, locale: Locale) -> String {
     let key = match error {
         DocumentError::NoPages => "error.no_pages",
         DocumentError::PagePlacementCountMismatch { .. } => "error.page_placement_count_mismatch",
+        DocumentError::InvalidToc(error) => return toc_error(*error, locale),
         DocumentError::WriteXml(_) => "error.write_xml",
         DocumentError::InvalidUtf8(_) => "error.invalid_utf8",
     };
     t!(key, locale = locale.as_str()).into_owned()
+}
+
+/// 目次項目に関するエラーを、表示ロケールに対応する文言へ変換する
+fn toc_error(error: TocError, locale: Locale) -> String {
+    let locale = locale.as_str();
+    match error {
+        TocError::EmptyLabel => t!("error.empty_toc_label", locale = locale),
+        TocError::PageNumberMustBePositive => {
+            t!("error.toc_page_number_must_be_positive", locale = locale)
+        }
+        TocError::PageOutOfRange {
+            page_number,
+            page_count,
+        } => t!(
+            "error.toc_page_number_out_of_range",
+            locale = locale,
+            page_number = page_number,
+            page_count = page_count
+        ),
+    }
+    .into_owned()
 }
 
 fn package_error(error: &PackageError, locale: Locale) -> String {
@@ -224,7 +246,8 @@ mod tests {
     use std::path::PathBuf;
 
     use epub_core::{
-        BuildError, BuildReport, ImageCollectionError, MetadataError, PageOverrideError,
+        BuildError, BuildReport, DocumentError, ImageCollectionError, MetadataError,
+        PageOverrideError, TocError,
     };
 
     use crate::{ApplicationError, config::ConfigError};
@@ -336,6 +359,26 @@ mod tests {
         assert_eq!(
             build_failed(&error, Locale::En),
             "Error: page number 4 exceeds the available image count 3"
+        );
+    }
+
+    #[test]
+    // 目次固有のページ番号エラーを、ページ配置のエラーと区別して案内する
+    fn translates_a_toc_error_to_both_locales() {
+        let error = ApplicationError::Build(BuildError::GenerateDocuments(
+            DocumentError::InvalidToc(TocError::PageOutOfRange {
+                page_number: 4,
+                page_count: 3,
+            }),
+        ));
+
+        assert_eq!(
+            build_failed(&error, Locale::Ja),
+            "エラー: 目次項目のページ番号 4 は入力画像のページ数 3 を超えています"
+        );
+        assert_eq!(
+            build_failed(&error, Locale::En),
+            "Error: table of contents page number 4 exceeds the available image count 3"
         );
     }
 }

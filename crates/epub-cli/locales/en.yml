@@ -44,6 +44,9 @@ error:
   page_number_must_be_positive: "page number must be at least 1"
   page_number_out_of_range: "page number %{page_number} exceeds the available image count %{page_count}"
   duplicate_page_number: "page number %{page_number} is specified more than once"
+  empty_toc_label: "table of contents label must not be empty"
+  toc_page_number_must_be_positive: "table of contents page number must be at least 1"
+  toc_page_number_out_of_range: "table of contents page number %{page_number} exceeds the available image count %{page_count}"
 image:
   invalid_header: "invalid image header"
   invalid_dimensions: "image dimensions must be at least 1 pixel"

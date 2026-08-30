@@ -5,8 +5,8 @@ use uuid::Uuid;
 
 use crate::{
     DocumentError, ImageCollectionError, MetadataError, MinimalMetadata, PackageError,
-    PageOverride, PageOverrideError, PublicationMetadata, collect_images, collect_images_in_order,
-    generate_documents, resolve_page_placements, write_epub,
+    PageOverride, PageOverrideError, PublicationMetadata, TocEntry, collect_images,
+    collect_images_in_order, generate_documents, resolve_page_placements, write_epub,
 };
 
 /// 1回の EPUB 生成に必要な入力値
@@ -19,6 +19,8 @@ pub struct BuildRequest {
     pub metadata: PublicationMetadata,
     /// 1 始まりのページ番号で指定する配置の上書き
     pub page_overrides: Vec<PageOverride>,
+    /// 指定順で出力する目次項目。空の場合は書籍タイトルで第 1 ページへリンクする
+    pub toc_entries: Vec<TocEntry>,
 }
 
 /// EPUB 生成が成功したときに返す結果
@@ -82,7 +84,7 @@ pub fn build_epub(request: &BuildRequest) -> Result<BuildReport, BuildError> {
     .map_err(BuildError::CollectImages)?;
     let placements = resolve_page_placements(images.len(), &request.page_overrides)
         .map_err(BuildError::ResolvePagePlacements)?;
-    let documents = generate_documents(&images, &metadata, &placements)
+    let documents = generate_documents(&images, &metadata, &placements, &request.toc_entries)
         .map_err(BuildError::GenerateDocuments)?;
     write_epub(&request.output_path, &images, &documents).map_err(BuildError::WritePackage)?;
 
@@ -130,7 +132,7 @@ mod tests {
     use zip::ZipArchive;
 
     use super::{BuildError, BuildRequest, build_epub};
-    use crate::{MetadataError, PageOverride, PagePlacement, PublicationMetadata};
+    use crate::{MetadataError, PageOverride, PagePlacement, PublicationMetadata, TocEntry};
 
     static NEXT_TEST_DIRECTORY: AtomicUsize = AtomicUsize::new(0);
 
@@ -146,6 +148,7 @@ mod tests {
             output_path: output.clone(),
             metadata: PublicationMetadata::new("書籍のタイトル".to_owned()),
             page_overrides: Vec::new(),
+            toc_entries: Vec::new(),
         };
 
         let report = build_epub(&request).unwrap();
@@ -160,6 +163,8 @@ mod tests {
         assert!(!package.contains("<dc:subject>"));
         assert_modified_timestamp(&package);
         assert_uuid_identifier(&package);
+        let navigation = navigation_document(&output);
+        assert!(navigation.contains("<a href=\"pages/page-0000.xhtml\">書籍のタイトル</a>"));
     }
 
     #[test]
@@ -176,6 +181,7 @@ mod tests {
             output_path: output.clone(),
             metadata,
             page_overrides: Vec::new(),
+            toc_entries: Vec::new(),
         };
 
         build_epub(&request).unwrap();
@@ -198,6 +204,7 @@ mod tests {
             output_path: output.clone(),
             metadata: PublicationMetadata::new("書籍のタイトル".to_owned()),
             page_overrides: Vec::new(),
+            toc_entries: Vec::new(),
         };
 
         build_epub(&request).unwrap();
@@ -217,6 +224,7 @@ mod tests {
             output_path: PathBuf::from("does-not-need-to-be-created.epub"),
             metadata: PublicationMetadata::new(" ".to_owned()),
             page_overrides: Vec::new(),
+            toc_entries: Vec::new(),
         };
 
         let error = build_epub(&request).unwrap_err();
@@ -244,6 +252,7 @@ mod tests {
                 page_number: 4,
                 placement: PagePlacement::Center,
             }],
+            toc_entries: Vec::new(),
         };
 
         build_epub(&request).unwrap();
@@ -283,6 +292,7 @@ mod tests {
                 page_number: 2,
                 placement: PagePlacement::Center,
             }],
+            toc_entries: Vec::new(),
         };
 
         build_epub(&request).unwrap();
@@ -299,6 +309,45 @@ mod tests {
         ));
     }
 
+    #[test]
+    // 利用者が指定した目次項目を、指定順のまま最終的な nav.xhtml へ出力する
+    fn builds_an_epub_with_toc_entries() {
+        let directory = TestDirectory::new();
+        for page_number in 1..=3 {
+            write_jpeg(directory.path().join(format!("page-{page_number}.jpg")));
+        }
+        let output = directory.path().join("book.epub");
+        let request = BuildRequest {
+            image_directory: directory.path().to_path_buf(),
+            image_order: None,
+            output_path: output.clone(),
+            metadata: PublicationMetadata::new("書籍のタイトル".to_owned()),
+            page_overrides: Vec::new(),
+            toc_entries: vec![
+                TocEntry {
+                    label: "本編".to_owned(),
+                    page_number: 2,
+                },
+                TocEntry {
+                    label: "あとがき".to_owned(),
+                    page_number: 3,
+                },
+            ],
+        };
+
+        build_epub(&request).unwrap();
+
+        let navigation = navigation_document(&output);
+        let main_entry = navigation
+            .find("<a href=\"pages/page-0001.xhtml\">本編</a>")
+            .unwrap();
+        let afterword_entry = navigation
+            .find("<a href=\"pages/page-0002.xhtml\">あとがき</a>")
+            .unwrap();
+        assert!(main_entry < afterword_entry);
+        assert!(!navigation.contains(">書籍のタイトル</a>"));
+    }
+
     fn package_document(path: &Path) -> String {
         // ビューアーと同じように、アーカイブから最終的な .opf を読み取る
         let file = fs::File::open(path).unwrap();
@@ -310,6 +359,19 @@ mod tests {
             .read_to_string(&mut package)
             .unwrap();
         package
+    }
+
+    fn navigation_document(path: &Path) -> String {
+        // パッケージ済みの EPUB から、ビューアーが参照する目次を読み取る
+        let file = fs::File::open(path).unwrap();
+        let mut archive = ZipArchive::new(file).unwrap();
+        let mut navigation = String::new();
+        archive
+            .by_name("EPUB/nav.xhtml")
+            .unwrap()
+            .read_to_string(&mut navigation)
+            .unwrap();
+        navigation
     }
 
     fn assert_uuid_identifier(package: &str) {
