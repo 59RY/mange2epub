@@ -16,6 +16,7 @@ manga2epub build ./images --output ./book.epub --title "書籍のタイトル"
 | --- | --- | --- |
 | `--config <FILE>` | YAML 設定ファイルを使う場合は必須 | `book.yaml` のパス。直接指定の引数とは併用不可 |
 | `<image_directory>` | 直接指定時は必須 | ページ画像が入ったディレクトリ |
+| `--image-order <FILE>` | 任意 | ページとして使用する画像。使用順に繰り返し指定可能 |
 | `-o`, `--output <PATH>` | 直接指定時は必須 | 生成する EPUB ファイルのパス |
 | `--title <TEXT>` | 直接指定時は必須 | 書籍のタイトル |
 | `--title-file-as <TEXT>` | 任意 | タイトルの読み |
@@ -39,13 +40,24 @@ manga2epub build ./images --output ./book.epub --title "書籍のタイトル"
 
 `--date` の例は、日付のみなら `2026-08-31`、UTC の日時なら `2026-08-31T15:00:00Z`、日本標準時の日時なら `2026-09-01T00:00:00+09:00` です。入力した日付やタイムゾーンは変換せずに出力します。
 
+画像の順序を直接指定する場合は、`--image-order` を使用する順に繰り返します。指定した場合は、列挙した画像だけをページとして使用します。省略した場合は、画像ディレクトリ内の対応画像を自然順で使用します。
+
+```bash
+manga2epub build ./images \
+  --output ./book.epub \
+  --title "書籍のタイトル" \
+  --image-order "cover.png" \
+  --image-order "page-01.jpg" \
+  --image-order "page-02.png"
+```
+
 ## YAML 設定ファイルを使う
 
 ```bash
 manga2epub build --config ./book.yaml
 ```
 
-`--config` を指定する場合、画像ディレクトリ、`--output`、`--title`、その他の書誌情報 CLI 引数は同時に指定できません。
+`--config` を指定する場合、画像ディレクトリ、画像の明示順序、`--output`、`--title`、その他の書誌情報 CLI 引数は同時に指定できません。
 
 ### book.yaml の項目一覧
 
@@ -72,6 +84,7 @@ manga2epub build --config ./book.yaml
 | `book.creators[].alternate_scripts[].value` | 別表記ごとに必須 | 文字列 | 別表記 |
 | `images` | 必須 | マップ | 入力画像の設定 |
 | `images.directory` | 必須 | パス | ページ画像が入ったディレクトリ |
+| `images.order` | 任意 | パスの配列 | ページとして使用する画像を使用順に指定 |
 | `pages` | 任意 | マップ | ページ配置の上書き設定 |
 | `pages.overrides` | 任意 | 配列 | ページ配置の上書き。複数指定可能 |
 | `pages.overrides[].page` | 上書きごとに必須 | 1 始まりの整数 | 配置を上書きするページ番号 |
@@ -79,11 +92,13 @@ manga2epub build --config ./book.yaml
 
 `output` と `images.directory` の相対パスは、設定ファイル自身の親ディレクトリを基準に解決します。例えば `config/book.yaml` 内の `./images` は `config/images` を指します。
 
-ページ番号は入力画像を自然順で並べた後の 1 始まりの番号です。指定しない場合、1 ページ目は `center`、2 ページ目以降は `right` と `left` を交互に配置します。`center` を指定したページの次の未指定ページは `right` から再開します。`left` または `right` を指定しても、後続の既定配置は変わりません。
+`images.order` を指定した場合は、列挙した画像だけを記述順で使用します。省略した場合は、`images.directory` 内の対応画像を自然順で使用します。空の配列、同じ画像の重複、存在しない画像または対応していない画像の指定はエラーです。
+
+ページ番号は `images.order` または自然順で画像を並べた後の 1 始まりの番号です。指定しない場合、1 ページ目は `center`、2 ページ目以降は `right` と `left` を交互に配置します。`center` を指定したページの次の未指定ページは `right` から再開します。`left` または `right` を指定しても、後続の既定配置は変わりません。
 
 `page: 0`、画像数を超えるページ番号、同じページ番号への重複指定はエラーです。ページ配置の上書きは YAML 設定ファイルだけで指定できます。
 
-未知のキーはエラーです。現在は `layout`、`toc`、画像の明示順序を受け付けません。
+未知のキーはエラーです。現在は `layout` と `toc` を受け付けません。
 
 ### 記述例
 
@@ -124,6 +139,10 @@ book:
 
 images:
   directory: "./images"
+  order:
+    - "cover.png"
+    - "page-01.jpg"
+    - "page-02.png"
 
 pages:
   overrides:

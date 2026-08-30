@@ -108,6 +108,7 @@ impl BookConfiguration {
     fn into_build_request(self, configuration_path: &Path) -> BuildRequest {
         BuildRequest {
             image_directory: resolve_path(configuration_path, self.images.directory),
+            image_order: self.images.order,
             output_path: resolve_path(configuration_path, self.output),
             metadata: self.book.into_publication_metadata(),
             page_overrides: self.pages.into_page_overrides(),
@@ -120,6 +121,8 @@ impl BookConfiguration {
 #[serde(deny_unknown_fields)]
 struct ImageConfiguration {
     directory: PathBuf,
+    #[serde(default)]
+    order: Option<Vec<PathBuf>>,
 }
 
 /// `pages` セクションに記述するページ配置の上書き設定
@@ -335,6 +338,9 @@ book:
   identifier: urn:test:book
 images:
   directory: images
+  order:
+    - page-02.png
+    - page-01.jpg
 pages:
   overrides:
     - page: 4
@@ -352,6 +358,13 @@ pages:
         assert_eq!(
             request.output_path,
             PathBuf::from("fixtures").join("output/book.epub")
+        );
+        assert_eq!(
+            request.image_order,
+            Some(vec![
+                PathBuf::from("page-02.png"),
+                PathBuf::from("page-01.jpg"),
+            ])
         );
         assert_eq!(request.metadata.title, "書籍のタイトル");
         assert_eq!(
@@ -429,6 +442,7 @@ images:
         .unwrap();
 
         assert_eq!(request.metadata.language, "ja");
+        assert_eq!(request.image_order, None);
         assert!(request.page_overrides.is_empty());
     }
 

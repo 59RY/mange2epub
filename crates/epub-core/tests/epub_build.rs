@@ -66,6 +66,7 @@ fn assert_fixture_build(
     let output_path = temporary_directory.path().join("book.epub");
     let request = BuildRequest {
         image_directory: input_directory.clone(),
+        image_order: None,
         output_path: output_path.clone(),
         metadata: PublicationMetadata::new("Integration Test Book".to_owned()),
         page_overrides: Vec::new(),

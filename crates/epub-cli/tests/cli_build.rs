@@ -189,6 +189,72 @@ pages:
     assert_page_placement(&package, 5, "left");
 }
 
+// 直接指定した JPEG と PNG を明示順序で収録し、画像のバイト列を維持する
+#[test]
+fn builds_a_mixed_fixture_in_the_explicit_cli_order() {
+    let directory = TestDirectory::new();
+    let input_directory = prepare_mixed_fixture(directory.path());
+    let output_path = directory.path().join("cli-order.epub");
+    let status = Command::new(env!("CARGO_BIN_EXE_manga2epub"))
+        .arg("build")
+        .arg(&input_directory)
+        .args(["--output"])
+        .arg(&output_path)
+        .args([
+            "--title",
+            "Explicit CLI order fixture",
+            "--image-order",
+            "02-本文.png",
+            "--image-order",
+            "01-表紙.jpg",
+        ])
+        .status()
+        .unwrap();
+
+    assert!(status.success());
+    assert_mixed_image_order(&output_path, &input_directory);
+}
+
+// YAML の明示順序で混在画像を収録し、並べ替え後のページへ配置を適用する
+#[test]
+fn builds_a_mixed_fixture_in_the_explicit_yaml_order() {
+    let directory = TestDirectory::new();
+    let input_directory = prepare_mixed_fixture(directory.path());
+    let configuration_path = directory.path().join("ordered-book.yaml");
+    let output_path = directory.path().join("yaml-order.epub");
+    std::fs::write(
+        &configuration_path,
+        format!(
+            r#"version: 1
+output: yaml-order.epub
+book:
+  title: Explicit YAML order fixture
+images:
+  directory: {}
+  order:
+    - "02-本文.png"
+    - "01-表紙.jpg"
+pages:
+  overrides:
+    - page: 2
+      placement: center
+"#,
+            yaml_string(&input_directory)
+        ),
+    )
+    .unwrap();
+
+    let status = Command::new(env!("CARGO_BIN_EXE_manga2epub"))
+        .args(["build", "--config"])
+        .arg(&configuration_path)
+        .status()
+        .unwrap();
+
+    assert!(status.success());
+    assert_mixed_image_order(&output_path, &input_directory);
+    assert_page_placement(&read_package_document(&output_path), 1, "center");
+}
+
 // 指定した fixture と CLI オプションから EPUB を生成し、OPF パッケージ文書を読み取る
 fn build_fixture(
     output_directory: &Path,
@@ -253,6 +319,51 @@ fn assert_page_placement(package: &str, page_index: usize, placement: &str) {
     )));
 }
 
+// 既存 fixture から、自然順と明示順序が異なる Unicode 名の混在入力を作る
+fn prepare_mixed_fixture(directory: &Path) -> PathBuf {
+    let input_directory = directory.join("mixed-images");
+    std::fs::create_dir(&input_directory).unwrap();
+    std::fs::copy(
+        fixture_directory("jpeg_only").join("image-0000.jpg"),
+        input_directory.join("01-表紙.jpg"),
+    )
+    .unwrap();
+    std::fs::copy(
+        fixture_directory("png_only").join("02-Blank.png"),
+        input_directory.join("02-本文.png"),
+    )
+    .unwrap();
+
+    input_directory
+}
+
+// 指定順での形式・参照先と、元画像のバイト列が EPUB 内でも一致することを確認する
+fn assert_mixed_image_order(output_path: &Path, input_directory: &Path) {
+    let mut archive = ZipArchive::new(File::open(output_path).unwrap()).unwrap();
+    let package = read_archive_text(&mut archive, "EPUB/package.opf");
+    assert_eq!(package.matches("<item id=\"image-").count(), 2);
+    assert!(package.contains(
+        "<item id=\"image-0000\" href=\"images/image-0000.png\" media-type=\"image/png\" properties=\"cover-image\"/>"
+    ));
+    assert!(package.contains(
+        "<item id=\"image-0001\" href=\"images/image-0001.jpg\" media-type=\"image/jpeg\"/>"
+    ));
+    let first_page = read_archive_text(&mut archive, "EPUB/pages/page-0000.xhtml");
+    let second_page = read_archive_text(&mut archive, "EPUB/pages/page-0001.xhtml");
+    assert!(first_page.contains("../images/image-0000.png"));
+    assert!(second_page.contains("../images/image-0001.jpg"));
+
+    for (source_name, archive_path) in [
+        ("02-本文.png", "EPUB/images/image-0000.png"),
+        ("01-表紙.jpg", "EPUB/images/image-0001.jpg"),
+    ] {
+        let source = std::fs::read(input_directory.join(source_name)).unwrap();
+        let packaged = read_archive_bytes(&mut archive, archive_path);
+        assert_eq!(source.len(), packaged.len());
+        assert!(source == packaged);
+    }
+}
+
 // identifier 未指定時は UUID を含む urn:uuid の値が生成されることを確認する
 fn assert_generated_uuid_identifier(package: &str) {
     let marker = "<dc:identifier id=\"pub-id\">urn:uuid:";
@@ -285,13 +396,29 @@ fn yaml_string(path: &Path) -> String {
 // 生成した EPUB から OPF パッケージ文書を UTF-8 テキストとして読み取る
 fn read_package_document(output_path: &Path) -> String {
     let mut archive = ZipArchive::new(File::open(output_path).unwrap()).unwrap();
-    let mut package = String::new();
+    read_archive_text(&mut archive, "EPUB/package.opf")
+}
+
+// ZIP エントリを UTF-8 テキストとして読み取る
+fn read_archive_text(archive: &mut ZipArchive<File>, path: &str) -> String {
+    let mut text = String::new();
     archive
-        .by_name("EPUB/package.opf")
+        .by_name(path)
         .unwrap()
-        .read_to_string(&mut package)
+        .read_to_string(&mut text)
         .unwrap();
-    package
+    text
+}
+
+// ZIP エントリを元画像との比較に使うバイト列として読み取る
+fn read_archive_bytes(archive: &mut ZipArchive<File>, path: &str) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    archive
+        .by_name(path)
+        .unwrap()
+        .read_to_end(&mut bytes)
+        .unwrap();
+    bytes
 }
 
 // テストごとの出力ファイルを分離する一時ディレクトリ
