@@ -1231,6 +1231,18 @@ EPUB 3.3 固定レイアウト
 
 利用者が指定した目次項目を `nav.xhtml` へ出力する。
 
+## Alpha リリース
+
+Phase 6 の受け入れ後、Phase 7 を開始する前に初回の配布用 alpha リリースを作成する。
+
+Git tag、GitHub Release、Cargo package のバージョンには、同じ SemVer 表記を用いる。Phase 6 の alpha リリースは `0.0.0-alpha.6` とする。
+
+alpha の番号は対応する Phase の番号に合わせる。Phase 7 の機能が揃った後に beta 版を配布する場合は `0.1.0-beta.1` から始め、受け入れ完了後の stable 版を `0.1.0` とする。
+
+初回リリースでは、macOS Apple Silicon（`aarch64-apple-darwin`）向けの `manga2epub` バイナリだけを配布する。タグ push を契機として GitHub Actions が品質チェック、リリースビルド、SHA-256 チェックサムの作成、GitHub prerelease の作成を行う。
+
+macOS のコード署名と notarization、Intel Mac、Windows、Linux 向けバイナリの配布は、このリリースの対象外とする。
+
 ## Phase 7 — CLI 完成度向上
 
 必要に応じて `init`、`build`、`check`、`inspect` 等を追加する。
@@ -1418,8 +1430,7 @@ Later:
 - NCX 互換出力
 - GUI フレームワークの最終決定
 - 使用する Rust crate
-- CI/CD 構成
-- リリース方法
+- CI/CD の将来的な拡張
 - macOS コード署名・notarization
 - Windows/Linux バイナリ配布
 - 既存 EPUB 編集機能の具体的な仕様
@@ -1435,6 +1446,7 @@ Later:
 - `rendition:spread` の標準値は `landscape`
 - 画像縦横比不一致は WARNING とし、少なくとも初期仕様では ERROR にしない
 - 既存 EPUB 編集機能は最低優先度とする
+- Git tag `0.0.0-alpha.6` を契機に、macOS Apple Silicon 向け alpha リリースを GitHub Actions で作成する
 
 未決事項を実装者の独断で固定仕様にしない。
 
