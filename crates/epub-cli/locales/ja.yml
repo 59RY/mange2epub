@@ -44,6 +44,9 @@ error:
   page_number_must_be_positive: "ページ番号は 1 以上を指定してください"
   page_number_out_of_range: "ページ番号 %{page_number} は入力画像のページ数 %{page_count} を超えています"
   duplicate_page_number: "ページ番号 %{page_number} が複数回指定されています"
+  empty_toc_label: "目次項目のラベルを空にすることはできません"
+  toc_page_number_must_be_positive: "目次項目のページ番号は 1 以上を指定してください"
+  toc_page_number_out_of_range: "目次項目のページ番号 %{page_number} は入力画像のページ数 %{page_count} を超えています"
 image:
   invalid_header: "画像ヘッダーが無効です"
   invalid_dimensions: "画像の幅と高さは 1 ピクセル以上である必要があります"

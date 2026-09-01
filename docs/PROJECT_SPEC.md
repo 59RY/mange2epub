@@ -596,6 +596,30 @@ EPUB 3.3 では `nav.xhtml` を正式な目次として生成する。
 
 manifest では `nav` プロパティを付与する。
 
+目次項目は `book.yaml` の `toc.entries` で指定する。各項目は、表示するラベルと、リンク先となる 1 始まりのページ番号を持つ。ページ番号は、自然順または `images.order` で画像を並べた後のページを指す。
+
+```yaml
+toc:
+  entries:
+    - label: "本編"
+      page: 4
+
+    - label: "OMAKE!"
+      page: 10
+```
+
+指定された項目は、YAML に記述した順序を維持して `nav.xhtml` へ出力する。ラベルの重複と、複数項目から同じページへのリンクは許可する。
+
+`toc` を省略した場合、または `toc.entries` が空の場合は、書籍タイトルをラベルとし、第 1 ページへリンクする項目を 1 件生成する。項目を 1 件以上指定した場合は、指定された項目だけを出力し、既定の項目を追加しない。
+
+このバージョンでは階層化した目次、page-list、landmarks、ページ内フラグメントへのリンクを扱わない。画像内に描かれた目次ページは通常の画像ページであり、EPUB Navigation Document の目次とは別に扱う。
+
+目次項目は次の条件を満たす必要がある。
+
+- `label` は空文字または空白だけの文字列にしない
+- `page` は 1 以上とする
+- `page` は入力画像のページ数を超えない
+
 ## 15.2 NCX
 
 `toc.ncx` は EPUB 3.3 の標準目次としては使わない。したがってデフォルトでは `<spine toc="ncx">` も生成しない。
@@ -727,15 +751,23 @@ pages:
   overrides:
     - page: 4
       placement: center
+
+# 省略または空の場合は、書籍タイトルで第 1 ページへリンクする
+toc:
+  entries:
+    - label: "本編"
+      page: 4
+    - label: "OMAKE!"
+      page: 10
 ```
 
-`version`、`output`、`book.title`、`images.directory` は必須とする。`book` のそれ以外の項目、`images.order`、`pages` は任意とし、`creators`、`roles`、`alternate_scripts`、`types`、`subjects`、`images.order`、`pages.overrides` はそれぞれ複数指定できる。
+`version`、`output`、`book.title`、`images.directory` は必須とする。`book` のそれ以外の項目、`images.order`、`pages`、`toc` は任意とし、`creators`、`roles`、`alternate_scripts`、`types`、`subjects`、`images.order`、`pages.overrides`、`toc.entries` はそれぞれ複数指定できる。
 
 `output` と `images.directory` の相対パスは、設定ファイル自身の親ディレクトリを基準に解決する。例えば `config/book.yaml` 内の `./images` は `config/images` を指す。
 
 このバージョンでは未知のキーをエラーとする。入力の誤記を見落とさずに検出するためである。
 
-このバージョンでは `images.order` と `pages.overrides` をページ指定として受け付ける。`layout` と `toc` は、対応する機能と同時に追加するまで受け付けない。ページ配置の指定は [#20](#20-ページ配置の指定)、明示順序の設計は [#20.4](#204-ページ順序の指定) を参照する。
+このバージョンでは `images.order`、`pages.overrides`、`toc.entries` をページ指定として受け付ける。`layout` は、対応する機能と同時に追加するまで受け付けない。ページ配置の指定は [#20](#20-ページ配置の指定)、明示順序の設計は [#20.4](#204-ページ順序の指定)、目次の設計は [#15](#15-目次) を参照する。
 
 ---
 
@@ -1041,7 +1073,7 @@ XML を大量の文字列連結で生成せず、適切な XML ライブラリ�
 
 GUI では、画像のドラッグ&ドロップ等でページ順を変更し、その結果を内部データモデルおよび YAML へ保存できるようにしたい。
 
-明示指定時に、指定されていない画像を未指定エラーとするか、自動順序で末尾へ追加するかは、最終的な YAML スキーマ確定時に決定する。
+明示指定時は、`images.order` に列挙された画像だけを指定順で使用する。入力ディレクトリ内の他の画像は、自動的に追加しない。
 
 ## 26.3 EPUB 内部名
 
@@ -1076,9 +1108,7 @@ images/image-0002.jpg
 - 画像サイズが極端に異なる
 - Description 未指定
 - Publisher 未指定
-- TOC が空
 - alternate-script の language tag が不自然
-- 明示順序に含まれない画像が自動的に追加された
 
 ## 27.1 縦横比不一致の扱い
 
@@ -1120,7 +1150,9 @@ override（`Page 4 -> Center`）が指定された場合、`Page 5` が `right` 
 
 ## 28.3 Navigation Test
 
-`nav.xhtml` の目次項目が正しい XHTML へリンクすることを確認する。
+`nav.xhtml` の目次項目が指定順で出力され、正しい XHTML へリンクすることを確認する。目次を省略した場合と空の目次を指定した場合は、書籍タイトルをラベルとして第 1 ページへリンクすることを確認する。
+
+ラベルに XML の特殊文字を含む場合に正しくエスケープされること、空のラベル、0 のページ番号、範囲外のページ番号をエラーとして検出することも確認する。
 
 ## 28.4 画像無加工テスト
 
@@ -1198,6 +1230,18 @@ EPUB 3.3 固定レイアウト
 ## Phase 6 — TOC
 
 利用者が指定した目次項目を `nav.xhtml` へ出力する。
+
+## Alpha リリース
+
+Phase 6 の受け入れ後、Phase 7 を開始する前に初回の配布用 alpha リリースを作成する。
+
+Git tag、GitHub Release、Cargo package のバージョンには、同じ SemVer 表記を用いる。Phase 6 の alpha リリースは `0.0.0-alpha.6` とする。
+
+alpha の番号は対応する Phase の番号に合わせる。Phase 7 の機能が揃った後に beta 版を配布する場合は `0.1.0-beta.1` から始め、受け入れ完了後の stable 版を `0.1.0` とする。
+
+初回リリースでは、macOS Apple Silicon（`aarch64-apple-darwin`）向けの `manga2epub` バイナリだけを配布する。タグ push を契機として GitHub Actions が品質チェック、リリースビルド、SHA-256 チェックサムの作成、GitHub prerelease の作成を行う。
+
+macOS のコード署名と notarization、Intel Mac、Windows、Linux 向けバイナリの配布は、このリリースの対象外とする。
 
 ## Phase 7 — CLI 完成度向上
 
@@ -1374,8 +1418,6 @@ Later:
 
 以下は今後決定する。
 
-- YAML における明示的な画像順序指定の最終形式
-- 明示順序に含まれない画像をエラーとするか、自動順序で末尾へ追加するか
 - natural sort の詳細仕様
 - viewport の正確な決定方法
 - 画像縦横比不一致の WARNING 閾値
@@ -1388,8 +1430,7 @@ Later:
 - NCX 互換出力
 - GUI フレームワークの最終決定
 - 使用する Rust crate
-- CI/CD 構成
-- リリース方法
+- CI/CD の将来的な拡張
 - macOS コード署名・notarization
 - Windows/Linux バイナリ配布
 - 既存 EPUB 編集機能の具体的な仕様
@@ -1401,10 +1442,11 @@ Later:
 - `book.yaml` は本書の初期案を基礎として進める
 - EPUB 内部で元の入力ファイル名を維持しない
 - 明示指定がない場合はファイル名の自然順で読み込む
-- 明示的な 1 ファイル単位のページ順指定を将来サポートする
+- 明示的な 1 ファイル単位のページ順指定は CLI/YAML で利用でき、指定された画像だけを指定順で使用する
 - `rendition:spread` の標準値は `landscape`
 - 画像縦横比不一致は WARNING とし、少なくとも初期仕様では ERROR にしない
 - 既存 EPUB 編集機能は最低優先度とする
+- Git tag `0.0.0-alpha.6` を契機に、macOS Apple Silicon 向け alpha リリースを GitHub Actions で作成する
 
 未決事項を実装者の独断で固定仕様にしない。
 

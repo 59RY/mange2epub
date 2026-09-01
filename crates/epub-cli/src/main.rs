@@ -205,6 +205,7 @@ impl BuildArguments {
                 identifier: self.identifier,
             },
             page_overrides: Vec::new(),
+            toc_entries: Vec::new(),
         })
     }
 }
@@ -294,6 +295,7 @@ mod tests {
         assert_eq!(request.metadata.date, None);
         assert!(request.metadata.types.is_empty());
         assert!(request.metadata.subjects.is_empty());
+        assert!(request.toc_entries.is_empty());
     }
 
     #[test]

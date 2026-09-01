@@ -9,6 +9,7 @@ mod images;
 mod metadata;
 mod package;
 mod pages;
+mod toc;
 
 pub use build::{BuildError, BuildReport, BuildRequest, build_epub};
 pub use documents::{
@@ -23,3 +24,4 @@ pub use package::{PackageError, write_epub};
 pub use pages::{
     PageOverride, PageOverrideError, PagePlacement, default_page_placement, resolve_page_placements,
 };
+pub use toc::{TocEntry, TocError, validate_toc_entries};

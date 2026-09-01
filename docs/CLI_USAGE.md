@@ -89,6 +89,10 @@ manga2epub build --config ./book.yaml
 | `pages.overrides` | 任意 | 配列 | ページ配置の上書き。複数指定可能 |
 | `pages.overrides[].page` | 上書きごとに必須 | 1 始まりの整数 | 配置を上書きするページ番号 |
 | `pages.overrides[].placement` | 上書きごとに必須 | `left`、`right`、`center` | ページ配置 |
+| `toc` | 任意 | マップ | ビューアーに表示する目次の設定 |
+| `toc.entries` | 任意 | 配列 | 目次項目。複数指定可能 |
+| `toc.entries[].label` | 目次項目ごとに必須 | 文字列 | ビューアーに表示するラベル |
+| `toc.entries[].page` | 目次項目ごとに必須 | 1 始まりの整数 | リンク先のページ番号 |
 
 `output` と `images.directory` の相対パスは、設定ファイル自身の親ディレクトリを基準に解決します。例えば `config/book.yaml` 内の `./images` は `config/images` を指します。
 
@@ -98,7 +102,13 @@ manga2epub build --config ./book.yaml
 
 `page: 0`、画像数を超えるページ番号、同じページ番号への重複指定はエラーです。ページ配置の上書きは YAML 設定ファイルだけで指定できます。
 
-未知のキーはエラーです。現在は `layout` と `toc` を受け付けません。
+目次項目は YAML に記述した順序でビューアーの目次へ出力します。ページ番号は、ページ配置と同じく `images.order` または自然順で画像を並べた後の 1 始まりの番号です。ラベルの重複と、複数項目から同じページへのリンクは許可します。
+
+`toc` を省略した場合、または `toc.entries` を空にした場合は、書籍タイトルをラベルとして第 1 ページへリンクします。目次項目を指定した場合は、指定した項目だけを出力します。空または空白だけのラベル、`page: 0`、画像数を超えるページ番号はエラーです。
+
+現在は階層化した目次に対応していません。目次項目は YAML 設定ファイルだけで指定できます。
+
+未知のキーはエラーです。現在は `layout` を受け付けません。
 
 ### 記述例
 
@@ -148,4 +158,11 @@ pages:
   overrides:
     - page: 4
       placement: center
+
+toc:
+  entries:
+    - label: "本編"
+      page: 4
+    - label: "おまけ"
+      page: 10
 ```

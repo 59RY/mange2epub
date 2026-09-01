@@ -6,7 +6,7 @@ use std::{
 
 use epub_core::{
     AlternateScript, BuildRequest, CreatorMetadata, PageOverride, PagePlacement,
-    PublicationMetadata,
+    PublicationMetadata, TocEntry,
 };
 use serde::Deserialize;
 
@@ -101,6 +101,8 @@ struct BookConfiguration {
     images: ImageConfiguration,
     #[serde(default)]
     pages: PageConfiguration,
+    #[serde(default)]
+    toc: TocConfiguration,
 }
 
 impl BookConfiguration {
@@ -112,6 +114,7 @@ impl BookConfiguration {
             output_path: resolve_path(configuration_path, self.output),
             metadata: self.book.into_publication_metadata(),
             page_overrides: self.pages.into_page_overrides(),
+            toc_entries: self.toc.into_toc_entries(),
         }
     }
 }
@@ -140,6 +143,42 @@ impl PageConfiguration {
             .into_iter()
             .map(PageOverrideConfiguration::into_page_override)
             .collect()
+    }
+}
+
+/// `toc` セクションに記述する目次設定
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TocConfiguration {
+    #[serde(default)]
+    entries: Vec<TocEntryConfiguration>,
+}
+
+impl TocConfiguration {
+    /// YAML の目次設定を、EPUB Navigation Document 用の項目へ変換する
+    fn into_toc_entries(self) -> Vec<TocEntry> {
+        self.entries
+            .into_iter()
+            .map(TocEntryConfiguration::into_toc_entry)
+            .collect()
+    }
+}
+
+/// `toc.entries` の各要素に記述するラベルとリンク先ページ
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TocEntryConfiguration {
+    label: String,
+    page: usize,
+}
+
+impl TocEntryConfiguration {
+    /// YAML の 1 始まりのページ番号を維持して、コアの目次項目へ変換する
+    fn into_toc_entry(self) -> TocEntry {
+        TocEntry {
+            label: self.label,
+            page_number: self.page,
+        }
     }
 }
 
@@ -297,7 +336,7 @@ fn resolve_path(configuration_path: &Path, path: PathBuf) -> PathBuf {
 mod tests {
     use std::path::{Path, PathBuf};
 
-    use epub_core::{AlternateScript, CreatorMetadata, PageOverride, PagePlacement};
+    use epub_core::{AlternateScript, CreatorMetadata, PageOverride, PagePlacement, TocEntry};
 
     use super::{ConfigError, parse_build_request};
 
@@ -347,6 +386,12 @@ pages:
       placement: center
     - page: 2
       placement: left
+toc:
+  entries:
+    - label: 本編
+      page: 3
+    - label: おまけ
+      page: 5
 "#,
         )
         .unwrap();
@@ -423,6 +468,19 @@ pages:
                 },
             ]
         );
+        assert_eq!(
+            request.toc_entries,
+            vec![
+                TocEntry {
+                    label: "本編".to_owned(),
+                    page_number: 3,
+                },
+                TocEntry {
+                    label: "おまけ".to_owned(),
+                    page_number: 5,
+                },
+            ]
+        );
     }
 
     #[test]
@@ -444,6 +502,7 @@ images:
         assert_eq!(request.metadata.language, "ja");
         assert_eq!(request.image_order, None);
         assert!(request.page_overrides.is_empty());
+        assert!(request.toc_entries.is_empty());
     }
 
     #[test]
@@ -527,6 +586,29 @@ images:
   directory: images
 pages:
   overrids: []  # テストの性質上、英単語typoでOK
+"#,
+        )
+        .unwrap_err();
+
+        assert!(matches!(error, ConfigError::Parse { .. }));
+    }
+
+    #[test]
+    // toc.entries 内の誤記も、未使用の設定として見落とさずに拒否する
+    fn rejects_an_unknown_toc_entry_key() {
+        let error = parse_build_request(
+            Path::new("book.yaml"),
+            r#"
+version: 1
+output: book.epub
+book:
+  title: 書籍のタイトル
+images:
+  directory: images
+toc:
+  entries:
+    - label: 本編
+      pages: 2
 "#,
         )
         .unwrap_err();
