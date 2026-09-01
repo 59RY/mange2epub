@@ -6,8 +6,8 @@ use quick_xml::{
 };
 
 use crate::{
-    CreatorMetadata, ImageDimensions, PagePlacement, PublicationMetadata, SourceImage, TocEntry,
-    TocError, validate_toc_entries,
+    CreatorMetadata, PagePlacement, PublicationMetadata, SourceImage, TocEntry, TocError,
+    validate_toc_entries,
 };
 
 const CONTAINER_PATH: &str = "EPUB/package.opf";
@@ -119,7 +119,7 @@ impl Error for DocumentError {
 
 /// 順序付けられた画像リストから XHTML、CSS、OPF、コンテナ文書を生成する
 ///
-/// - 最初の画像が共通の論理的な viewport を決める
+/// - 各画像の寸法が、対応するページの論理的な viewport を決める
 /// - 生成する EPUB 内のパスには、入力画像のパスを意図的に含めない
 /// - EPUB 内のパスは画像の番号で正規化する
 /// - ページ配置の数は画像数と一致している必要がある
@@ -130,7 +130,9 @@ pub fn generate_documents(
     placements: &[PagePlacement],
     toc_entries: &[TocEntry],
 ) -> Result<GeneratedDocuments, DocumentError> {
-    let viewport = images.first().ok_or(DocumentError::NoPages)?.dimensions;
+    if images.is_empty() {
+        return Err(DocumentError::NoPages);
+    }
     if images.len() != placements.len() {
         return Err(DocumentError::PagePlacementCountMismatch {
             image_count: images.len(),
@@ -142,7 +144,7 @@ pub fn generate_documents(
         .iter()
         .enumerate()
         .map(|(index, image)| {
-            generate_page_document(index, viewport, &metadata.title, &metadata.language, image)
+            generate_page_document(index, &metadata.title, &metadata.language, image)
         })
         .collect::<Result<Vec<_>, _>>()?;
 
@@ -294,6 +296,7 @@ fn generate_package_opf(
                 ("id", page_id.as_str()),
                 ("href", page_path.as_str()),
                 ("media-type", "application/xhtml+xml"),
+                ("properties", "svg"),
             ],
         )?;
 
@@ -491,13 +494,11 @@ fn write_navigation_entry(
 
 fn generate_page_document(
     index: usize,
-    viewport: ImageDimensions,
     title: &str,
     language: &str,
     image: &SourceImage,
 ) -> Result<PageDocument, DocumentError> {
-    // 各画像に1つの XHTML 文書を割り当てる
-    // すべてのページで、最初の画像から得た共通の viewport 寸法を使用する
+    // 各画像に1つの XHTML 文書を割り当て、画像寸法を viewport として使用する
     let mut writer = xml_writer();
     write_declaration(&mut writer)?;
     write_doctype(&mut writer)?;
@@ -519,7 +520,11 @@ fn generate_page_document(
             ("name", "viewport"),
             (
                 "content",
-                format!("width={}, height={}", viewport.width, viewport.height).as_str(),
+                format!(
+                    "width={}, height={}",
+                    image.dimensions.width, image.dimensions.height
+                )
+                .as_str(),
             ),
         ],
     )?;
@@ -535,11 +540,33 @@ fn generate_page_document(
     end(&mut writer, "head")?;
     start(&mut writer, "body", &[])?;
     let image_href = format!("../{}", image_path(index, image.format));
+    let viewport = format!("0 0 {} {}", image.dimensions.width, image.dimensions.height);
+    let width = image.dimensions.width.to_string();
+    let height = image.dimensions.height.to_string();
+    start(
+        &mut writer,
+        "svg",
+        &[
+            ("xmlns", "http://www.w3.org/2000/svg"),
+            ("xmlns:xlink", "http://www.w3.org/1999/xlink"),
+            ("version", "1.1"),
+            ("width", "100%"),
+            ("height", "100%"),
+            ("viewBox", viewport.as_str()),
+            ("preserveAspectRatio", "xMidYMid meet"),
+        ],
+    )?;
     empty(
         &mut writer,
-        "img",
-        &[("src", image_href.as_str()), ("alt", "")],
+        "image",
+        &[
+            ("width", width.as_str()),
+            ("height", height.as_str()),
+            ("preserveAspectRatio", "xMidYMid meet"),
+            ("xlink:href", image_href.as_str()),
+        ],
     )?;
+    end(&mut writer, "svg")?;
     end(&mut writer, "body")?;
     end(&mut writer, "html")?;
 
@@ -561,7 +588,7 @@ fn page_css() -> String {
         "  overflow: hidden;",
         "}",
         "",
-        "img {",
+        "svg {",
         "  display: block;",
         "  width: 100%;",
         "  height: 100%;",
@@ -732,11 +759,9 @@ mod tests {
                 "<itemref idref=\"page-0002\" properties=\"rendition:page-spread-left\"/>"
             )
         );
-        assert!(
-            documents
-                .package_opf
-                .contains("<item id=\"page-0000\" href=\"pages/page-0000.xhtml\" media-type=\"application/xhtml+xml\"/>")
-        );
+        assert!(documents.package_opf.contains(
+            "<item id=\"page-0000\" href=\"pages/page-0000.xhtml\" media-type=\"application/xhtml+xml\" properties=\"svg\"/>"
+        ));
         assert!(documents.navigation_xhtml.contains("epub:type=\"toc\""));
         assert!(
             documents
@@ -754,7 +779,42 @@ mod tests {
         assert!(
             documents.pages[0]
                 .contents
-                .contains("../images/image-0000.jpg")
+                .contains("viewBox=\"0 0 1200 1759\"")
+        );
+        assert!(
+            documents.pages[0].contents.contains(
+                "<image width=\"1200\" height=\"1759\" preserveAspectRatio=\"xMidYMid meet\" xlink:href=\"../images/image-0000.jpg\"/>"
+            )
+        );
+    }
+
+    #[test]
+    // 各ページの viewport を対応する画像寸法に合わせ、元画像の縦横比を維持する
+    fn uses_each_image_dimensions_for_its_page_viewport() {
+        let mut images = images();
+        images[1].dimensions = ImageDimensions {
+            width: 2400,
+            height: 1759,
+        };
+
+        let documents =
+            generate_documents(&images, &metadata(), &default_placements(images.len()), &[])
+                .unwrap();
+
+        assert!(
+            documents.pages[0]
+                .contents
+                .contains("content=\"width=1200, height=1759\"")
+        );
+        assert!(
+            documents.pages[1]
+                .contents
+                .contains("content=\"width=2400, height=1759\"")
+        );
+        assert!(
+            documents.pages[1]
+                .contents
+                .contains("viewBox=\"0 0 2400 1759\"")
         );
     }
 

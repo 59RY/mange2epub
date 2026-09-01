@@ -331,7 +331,7 @@ EPUB 生成に必要な範囲で、画像の width・height 等の基本属性�
 
 ## 10.4 ページサイズ
 
-固定レイアウト XHTML には viewport 寸法が必要となる。漫画全体で共通の論理 viewport を使用する。第一候補として、先頭画像の width/height を基準 viewport として使う。
+固定レイアウト XHTML には viewport 寸法が必要となる。各 XHTML では、対応する画像の width/height を論理 viewport として使う。
 
 ```html
 <meta
@@ -339,7 +339,7 @@ EPUB 生成に必要な範囲で、画像の width・height 等の基本属性�
     content="width=1200, height=1759"/>
 ```
 
-画像そのものは加工せず、XHTML/CSS 上で論理 viewport 内に表示する。
+画像そのものは加工せず、XHTML 内の SVG `viewBox` を介して論理 viewport 内に表示する。SVG の `preserveAspectRatio` には `xMidYMid meet` を指定し、元画像の縦横比を維持する。
 
 入力画像の縦横比は漫画内で統一されていることを前提とする。縦横比の異なる画像が投入されても、原則として EPUB 生成は失敗させない。ただし他の画像と明らかに縦横比が異なる場合は WARNING を表示する。
 
@@ -359,7 +359,9 @@ image-0001.jpg → page-0001.xhtml
 image-0002.png → page-0002.xhtml
 ```
 
-XHTML は固定レイアウト用 viewport を持ち、対応する画像を 1 枚表示する。画像はページ全面へ表示し、余白・padding・margin は持たせない。画像の再エンコードは行わない。
+XHTML は固定レイアウト用 viewport を持ち、対応する画像を SVG 内に 1 枚表示する。画像はページ内へ縦横比を維持して表示し、余白・padding・margin は持たせない。画像の再エンコードは行わない。
+
+SVG を含む XHTML は、OPF manifest の `properties` に `svg` を指定する。
 
 EPUB 内部の画像ファイル名・XHTML ファイル名は、入力元のファイル名に依存せず、決定論的な正規化名を使ってよい。
 
@@ -1121,7 +1123,7 @@ images/image-0002.jpg
 - 画像サイズが小さい場合と大きい場合で同じ閾値を使うか検討する
 - center 配置の画像を通常ページと同じ基準で判定するか検討する
 
-center 配置の画像は見開き相当ページである可能性があるため、通常ページと異なる縦横比でも必ず WARNING とするとは限らない。警告判定は、ページ配置、基準 viewport、画像サイズ、縦横比を考慮して設計する。警告は EPUB 生成を必ずしも失敗させない。
+center 配置の画像は見開き相当ページである可能性があるため、通常ページと異なる縦横比でも必ず WARNING とするとは限らない。警告判定は、ページ配置、各ページの viewport、画像サイズ、縦横比を考慮して設計する。警告は EPUB 生成を必ずしも失敗させない。
 
 ---
 
@@ -1237,7 +1239,7 @@ Phase 6 の受け入れ後、Phase 7 を開始する前に初回の配布用 alp
 
 Git tag、GitHub Release、Cargo package のバージョンには、同じ SemVer 表記を用いる。Phase 6 の alpha リリースは `0.0.0-alpha.6` とする。
 
-alpha の番号は対応する Phase の番号に合わせる。Phase 7 の機能が揃った後に beta 版を配布する場合は `0.1.0-beta.1` から始め、受け入れ完了後の stable 版を `0.1.0` とする。
+alpha の番号は対応する Phase の番号に合わせる。alpha リリースの修正版は、`0.0.0-alpha.6.1` のように末尾へ修正番号を加える。Phase 7 の機能が揃った後に beta 版を配布する場合は `0.1.0-beta.1` から始め、受け入れ完了後の stable 版を `0.1.0` とする。
 
 初回リリースでは、macOS Apple Silicon（`aarch64-apple-darwin`）向けの `manga2epub` バイナリだけを配布する。タグ push を契機として GitHub Actions が品質チェック、リリースビルド、SHA-256 チェックサムの作成、GitHub prerelease の作成を行う。
 
@@ -1419,7 +1421,6 @@ Later:
 以下は今後決定する。
 
 - natural sort の詳細仕様
-- viewport の正確な決定方法
 - 画像縦横比不一致の WARNING 閾値
 - 数ピクセル程度の差を許容するか
 - 縦横比の差を絶対値・相対値のどちらで判定するか
