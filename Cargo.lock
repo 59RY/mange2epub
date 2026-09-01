@@ -305,7 +305,7 @@ dependencies = [
 
 [[package]]
 name = "epub-cli"
-version = "0.0.0-alpha.6"
+version = "0.0.0-alpha.6.1"
 dependencies = [
  "clap",
  "epub-core",
@@ -319,7 +319,7 @@ dependencies = [
 
 [[package]]
 name = "epub-core"
-version = "0.0.0-alpha.6"
+version = "0.0.0-alpha.6.1"
 dependencies = [
  "quick-xml",
  "sha2",
