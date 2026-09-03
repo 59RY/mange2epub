@@ -1,0 +1,45 @@
+version: 1
+output: book.epub
+
+book:
+  title: Mixed integration fixture
+  language: ja
+
+images:
+  directory: .
+  order:
+    - "表紙.png"
+    - "空白(2P用).png"
+    - "目次(3P用).png"
+    - "大きなページ(4,5P用).jpg"
+    - "通常コンテント(6P用).png"
+    - "通常コンテント(7P用).jpg"
+    - "大きなページ(8,9P用).png"
+    - "EOF.png"
+
+pages:
+  overrides:
+    - page: 4
+      placement: center
+    - page: 7
+      placement: center
+    - page: 8
+      placement: center
+
+toc:
+  entries:
+    - label: 表紙
+      page: 1
+    - label: 導入
+      page: 2
+    - label: 目次ページ
+      page: 3
+    - label: 本編
+      page: 4
+      children:
+        - label: 本編（前半）
+          page: 4
+        - label: 本編（後半）
+          page: 7
+    - label: 裏表紙
+      page: 8

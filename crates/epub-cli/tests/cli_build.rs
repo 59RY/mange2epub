@@ -281,6 +281,154 @@ pages:
     assert_page_placement(&read_package_document(&output_path), 1, "center");
 }
 
+// 日本語名の混在 fixture を YAML から生成し、見開き、画像の保持、階層目次を検証する
+#[test]
+fn builds_the_mixed_book_fixture_from_a_yaml_configuration_file() {
+    // YAML の入力値とは別に期待値を持ち、設定と出力が同時に誤っても見落とさない
+    let expected_pages = [
+        ("表紙.png", "png", "image/png", 874, 1240, "center"),
+        ("空白(2P用).png", "png", "image/png", 874, 1240, "right"),
+        ("目次(3P用).png", "png", "image/png", 874, 1240, "left"),
+        (
+            "大きなページ(4,5P用).jpg",
+            "jpg",
+            "image/jpeg",
+            1748,
+            1240,
+            "center",
+        ),
+        (
+            "通常コンテント(6P用).png",
+            "png",
+            "image/png",
+            874,
+            1240,
+            "right",
+        ),
+        (
+            "通常コンテント(7P用).jpg",
+            "jpg",
+            "image/jpeg",
+            874,
+            1240,
+            "left",
+        ),
+        (
+            "大きなページ(8,9P用).png",
+            "png",
+            "image/png",
+            1748,
+            1240,
+            "center",
+        ),
+        ("EOF.png", "png", "image/png", 874, 1240, "center"),
+    ];
+    let source_directory = fixture_directory("mixed");
+    let directory = TestDirectory::new();
+    let configuration_path = directory.path().join("book.yaml");
+    let output_path = directory.path().join("book.epub");
+
+    // 手動確認と同じ YAML を使用し、出力はテスト固有のディレクトリへ隔離する
+    std::fs::copy(source_directory.join("book.yaml"), &configuration_path).unwrap();
+    for (source_name, ..) in &expected_pages {
+        std::fs::copy(
+            source_directory.join(source_name),
+            directory.path().join(source_name),
+        )
+        .unwrap();
+    }
+    let status = Command::new(env!("CARGO_BIN_EXE_manga2epub"))
+        .args(["build", "--config"])
+        .arg(&configuration_path)
+        .status()
+        .unwrap();
+
+    assert!(status.success());
+    let mut archive = ZipArchive::new(File::open(&output_path).unwrap()).unwrap();
+    let package = read_archive_text(&mut archive, "EPUB/package.opf");
+    assert_eq!(package.matches("<item id=\"image-").count(), 8);
+    assert_eq!(package.matches("href=\"pages/page-").count(), 8);
+    assert_eq!(package.matches("<itemref ").count(), 8);
+    assert_eq!(package.matches("media-type=\"image/jpeg\"").count(), 2);
+    assert_eq!(package.matches("media-type=\"image/png\"").count(), 6);
+    assert_eq!(package.matches("properties=\"cover-image\"").count(), 1);
+
+    let mut previous_spine_position = 0;
+    for (index, (source_name, extension, media_type, width, height, placement)) in
+        expected_pages.iter().enumerate()
+    {
+        let image_path = format!("images/image-{index:04}.{extension}");
+        let properties = if index == 0 {
+            " properties=\"cover-image\""
+        } else {
+            ""
+        };
+        assert!(package.contains(&format!(
+            "<item id=\"image-{index:04}\" href=\"{image_path}\" media-type=\"{media_type}\"{properties}/>"
+        )));
+        assert!(package.contains(&format!(
+            "<item id=\"page-{index:04}\" href=\"pages/page-{index:04}.xhtml\" media-type=\"application/xhtml+xml\" properties=\"svg\"/>"
+        )));
+
+        // 見開き画像も 1 ページとして扱い、spine の順序と配置を確認する
+        let itemref = format!(
+            "<itemref idref=\"page-{index:04}\" properties=\"rendition:page-spread-{placement}\"/>"
+        );
+        let spine_position = package.find(&itemref).unwrap();
+        assert!(previous_spine_position < spine_position);
+        previous_spine_position = spine_position;
+
+        let source = std::fs::read(source_directory.join(source_name)).unwrap();
+        let packaged = read_archive_bytes(&mut archive, &format!("EPUB/{image_path}"));
+        assert_eq!(source.len(), packaged.len(), "{source_name}");
+        assert!(source == packaged, "{source_name}");
+
+        let page = read_archive_text(&mut archive, &format!("EPUB/pages/page-{index:04}.xhtml"));
+        assert!(page.contains(&format!("content=\"width={width}, height={height}\"")));
+        assert!(page.contains(&format!("viewBox=\"0 0 {width} {height}\"")));
+        assert!(page.contains(&format!(
+            "<image width=\"{width}\" height=\"{height}\" preserveAspectRatio=\"xMidYMid meet\" xlink:href=\"../{image_path}\"/>"
+        )));
+        assert_eq!(
+            page.matches("preserveAspectRatio=\"xMidYMid meet\"")
+                .count(),
+            2
+        );
+    }
+
+    // 入れ子とリンク先も比較し、子項目の平坦化や印刷ページ番号との取り違えを検出する
+    let navigation = read_archive_text(&mut archive, "EPUB/nav.xhtml");
+    assert!(navigation.contains(
+        r#"<nav epub:type="toc">
+      <ol>
+        <li>
+          <a href="pages/page-0000.xhtml">表紙</a>
+        </li>
+        <li>
+          <a href="pages/page-0001.xhtml">導入</a>
+        </li>
+        <li>
+          <a href="pages/page-0002.xhtml">目次ページ</a>
+        </li>
+        <li>
+          <a href="pages/page-0003.xhtml">本編</a>
+          <ol>
+            <li>
+              <a href="pages/page-0003.xhtml">本編（前半）</a>
+            </li>
+            <li>
+              <a href="pages/page-0006.xhtml">本編（後半）</a>
+            </li>
+          </ol>
+        </li>
+        <li>
+          <a href="pages/page-0007.xhtml">裏表紙</a>
+        </li>
+      </ol>
+    </nav>"#
+    ));
+}
+
 // 指定した fixture と CLI オプションから EPUB を生成し、OPF パッケージ文書を読み取る
 fn build_fixture(
     output_directory: &Path,
