@@ -164,12 +164,14 @@ impl TocConfiguration {
     }
 }
 
-/// `toc.entries` の各要素に記述するラベルとリンク先ページ
+/// `toc.entries` の各要素に記述するラベル、リンク先ページ、子項目
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct TocEntryConfiguration {
     label: String,
     page: usize,
+    #[serde(default)]
+    children: Vec<TocEntryConfiguration>,
 }
 
 impl TocEntryConfiguration {
@@ -178,6 +180,11 @@ impl TocEntryConfiguration {
         TocEntry {
             label: self.label,
             page_number: self.page,
+            children: self
+                .children
+                .into_iter()
+                .map(TocEntryConfiguration::into_toc_entry)
+                .collect(),
         }
     }
 }
@@ -390,8 +397,11 @@ toc:
   entries:
     - label: 本編
       page: 3
-    - label: おまけ
-      page: 5
+      children:
+        - label: おまけ
+          page: 5
+    - label: あとがき
+      page: 6
 "#,
         )
         .unwrap();
@@ -474,10 +484,16 @@ toc:
                 TocEntry {
                     label: "本編".to_owned(),
                     page_number: 3,
+                    children: vec![TocEntry {
+                        label: "おまけ".to_owned(),
+                        page_number: 5,
+                        children: Vec::new(),
+                    }],
                 },
                 TocEntry {
-                    label: "おまけ".to_owned(),
-                    page_number: 5,
+                    label: "あとがき".to_owned(),
+                    page_number: 6,
+                    children: Vec::new(),
                 },
             ]
         );
@@ -609,6 +625,31 @@ toc:
   entries:
     - label: 本編
       pages: 2
+"#,
+        )
+        .unwrap_err();
+
+        assert!(matches!(error, ConfigError::Parse { .. }));
+    }
+
+    #[test]
+    // 階層にかかわらず、すべての目次項目にリンク先ページを要求する
+    fn rejects_a_nested_toc_entry_without_a_page() {
+        let error = parse_build_request(
+            Path::new("book.yaml"),
+            r#"
+version: 1
+output: book.epub
+book:
+  title: 書籍のタイトル
+images:
+  directory: images
+toc:
+  entries:
+    - label: 本編
+      page: 2
+      children:
+        - label: おまけ
 "#,
         )
         .unwrap_err();

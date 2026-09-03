@@ -465,11 +465,16 @@ fn generate_navigation_xhtml(
     start(&mut writer, "nav", &[("epub:type", "toc")])?;
     start(&mut writer, "ol", &[])?;
     if toc_entries.is_empty() {
-        write_navigation_entry(&mut writer, title, 0)?;
+        write_navigation_entry(&mut writer, title, 0, &[])?;
     } else {
         for entry in toc_entries {
             // 目次項目は検証済みであるため、1 始まりから安全に変換できる
-            write_navigation_entry(&mut writer, &entry.label, entry.page_number - 1)?;
+            write_navigation_entry(
+                &mut writer,
+                &entry.label,
+                entry.page_number - 1,
+                &entry.children,
+            )?;
         }
     }
     end(&mut writer, "ol")?;
@@ -485,10 +490,19 @@ fn write_navigation_entry(
     writer: &mut Writer<Vec<u8>>,
     label: &str,
     page_index: usize,
+    children: &[TocEntry],
 ) -> Result<(), DocumentError> {
     let page_path = page_path(page_index);
     start(writer, "li", &[])?;
     text_element(writer, "a", &[("href", &page_path)], label)?;
+    if !children.is_empty() {
+        start(writer, "ol", &[])?;
+        for child in children {
+            // 子項目も検証済みであるため、1 始まりから安全に変換できる
+            write_navigation_entry(writer, &child.label, child.page_number - 1, &child.children)?;
+        }
+        end(writer, "ol")?;
+    }
     end(writer, "li")
 }
 
@@ -837,10 +851,16 @@ mod tests {
             TocEntry {
                 label: "導入".to_owned(),
                 page_number: 2,
+                children: Vec::new(),
             },
             TocEntry {
-                label: "本編 & おまけ".to_owned(),
+                label: "本編".to_owned(),
                 page_number: 3,
+                children: vec![TocEntry {
+                    label: "おまけ & あとがき".to_owned(),
+                    page_number: 3,
+                    children: Vec::new(),
+                }],
             },
         ];
 
@@ -853,10 +873,16 @@ mod tests {
             .unwrap();
         let second_entry = documents
             .navigation_xhtml
-            .find("<a href=\"pages/page-0002.xhtml\">本編 &amp; おまけ</a>")
+            .find("<a href=\"pages/page-0002.xhtml\">本編</a>")
+            .unwrap();
+        let child_entry = documents
+            .navigation_xhtml
+            .find("<a href=\"pages/page-0002.xhtml\">おまけ &amp; あとがき</a>")
             .unwrap();
 
         assert!(first_entry < second_entry);
+        assert!(second_entry < child_entry);
+        assert_eq!(documents.navigation_xhtml.matches("<ol>").count(), 2);
         assert!(!documents.navigation_xhtml.contains(">Untitled</a>"));
     }
 
@@ -866,6 +892,7 @@ mod tests {
         let entries = vec![TocEntry {
             label: "本編".to_owned(),
             page_number: 4,
+            children: Vec::new(),
         }];
 
         let error = generate_documents(&images(), &metadata(), &default_placements(3), &entries)

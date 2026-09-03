@@ -151,6 +151,19 @@ pages:
   overrides:
     - page: 4
       placement: center
+toc:
+  entries:
+    - label: 表紙
+      page: 1
+    - label: 導入
+      page: 2
+    - label: 目次ページ
+      page: 3
+    - label: 本編
+      page: 4
+      children:
+        - label: おまけ
+          page: 10
 "#,
             yaml_string(&input_directory)
         ),
@@ -187,6 +200,19 @@ pages:
     assert_page_placement(&package, 3, "center");
     assert_page_placement(&package, 4, "right");
     assert_page_placement(&package, 5, "left");
+
+    let navigation = read_navigation_document(&output_path);
+    let cover = navigation.find(">表紙</a>").unwrap();
+    let introduction = navigation.find(">導入</a>").unwrap();
+    let contents_page = navigation.find(">目次ページ</a>").unwrap();
+    let main_content = navigation.find(">本編</a>").unwrap();
+    let bonus = navigation.find(">おまけ</a>").unwrap();
+    assert!(cover < introduction);
+    assert!(introduction < contents_page);
+    assert!(contents_page < main_content);
+    assert!(main_content < bonus);
+    assert!(navigation[main_content..bonus].contains("<ol>"));
+    assert_eq!(navigation.matches("<ol>").count(), 2);
 }
 
 // 直接指定した JPEG と PNG を明示順序で収録し、画像のバイト列を維持する
@@ -397,6 +423,12 @@ fn yaml_string(path: &Path) -> String {
 fn read_package_document(output_path: &Path) -> String {
     let mut archive = ZipArchive::new(File::open(output_path).unwrap()).unwrap();
     read_archive_text(&mut archive, "EPUB/package.opf")
+}
+
+// 生成した EPUB から Navigation Document を UTF-8 テキストとして読み取る
+fn read_navigation_document(output_path: &Path) -> String {
+    let mut archive = ZipArchive::new(File::open(output_path).unwrap()).unwrap();
+    read_archive_text(&mut archive, "EPUB/nav.xhtml")
 }
 
 // ZIP エントリを UTF-8 テキストとして読み取る

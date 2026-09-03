@@ -327,10 +327,16 @@ mod tests {
                 TocEntry {
                     label: "本編".to_owned(),
                     page_number: 2,
+                    children: vec![TocEntry {
+                        label: "おまけ".to_owned(),
+                        page_number: 3,
+                        children: Vec::new(),
+                    }],
                 },
                 TocEntry {
                     label: "あとがき".to_owned(),
                     page_number: 3,
+                    children: Vec::new(),
                 },
             ],
         };
@@ -341,10 +347,14 @@ mod tests {
         let main_entry = navigation
             .find("<a href=\"pages/page-0001.xhtml\">本編</a>")
             .unwrap();
+        let bonus_entry = navigation
+            .find("<a href=\"pages/page-0002.xhtml\">おまけ</a>")
+            .unwrap();
         let afterword_entry = navigation
             .find("<a href=\"pages/page-0002.xhtml\">あとがき</a>")
             .unwrap();
-        assert!(main_entry < afterword_entry);
+        assert!(main_entry < bonus_entry);
+        assert!(bonus_entry < afterword_entry);
         assert!(!navigation.contains(">書籍のタイトル</a>"));
     }
 

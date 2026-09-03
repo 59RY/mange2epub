@@ -7,6 +7,8 @@ pub struct TocEntry {
     pub label: String,
     /// 画像を並べた後の 1 始まりのページ番号
     pub page_number: usize,
+    /// この項目の下に、指定順で表示する子項目
+    pub children: Vec<TocEntry>,
 }
 
 /// 目次項目の検証時に発生しうるエラー
@@ -46,21 +48,28 @@ impl Error for TocError {}
 /// 目次項目が、生成対象のページへ安全にリンクできることを検証する
 pub fn validate_toc_entries(page_count: usize, entries: &[TocEntry]) -> Result<(), TocError> {
     for entry in entries {
-        if entry.label.trim().is_empty() {
-            return Err(TocError::EmptyLabel);
-        }
-        if entry.page_number == 0 {
-            return Err(TocError::PageNumberMustBePositive);
-        }
-        if entry.page_number > page_count {
-            return Err(TocError::PageOutOfRange {
-                page_number: entry.page_number,
-                page_count,
-            });
-        }
+        validate_toc_entry(page_count, entry)?;
     }
 
     Ok(())
+}
+
+/// 1 件の目次項目と、その子項目を再帰的に検証する
+fn validate_toc_entry(page_count: usize, entry: &TocEntry) -> Result<(), TocError> {
+    if entry.label.trim().is_empty() {
+        return Err(TocError::EmptyLabel);
+    }
+    if entry.page_number == 0 {
+        return Err(TocError::PageNumberMustBePositive);
+    }
+    if entry.page_number > page_count {
+        return Err(TocError::PageOutOfRange {
+            page_number: entry.page_number,
+            page_count,
+        });
+    }
+
+    validate_toc_entries(page_count, &entry.children)
 }
 
 // 単体テストでは、目次項目の入力境界と許可する指定を確認する
@@ -81,10 +90,12 @@ mod tests {
             TocEntry {
                 label: "本編".to_owned(),
                 page_number: 2,
+                children: Vec::new(),
             },
             TocEntry {
                 label: "本編".to_owned(),
                 page_number: 2,
+                children: Vec::new(),
             },
         ];
 
@@ -97,6 +108,7 @@ mod tests {
         let entries = vec![TocEntry {
             label: " \n\t".to_owned(),
             page_number: 1,
+            children: Vec::new(),
         }];
 
         assert_eq!(validate_toc_entries(1, &entries), Err(TocError::EmptyLabel));
@@ -108,6 +120,7 @@ mod tests {
         let entries = vec![TocEntry {
             label: "表紙".to_owned(),
             page_number: 0,
+            children: Vec::new(),
         }];
 
         assert_eq!(
@@ -122,6 +135,29 @@ mod tests {
         let entries = vec![TocEntry {
             label: "本編".to_owned(),
             page_number: 4,
+            children: Vec::new(),
+        }];
+
+        assert_eq!(
+            validate_toc_entries(3, &entries),
+            Err(TocError::PageOutOfRange {
+                page_number: 4,
+                page_count: 3,
+            })
+        );
+    }
+
+    #[test]
+    // 子項目にも、最上位の項目と同じ入力条件を適用する
+    fn rejects_an_invalid_nested_entry() {
+        let entries = vec![TocEntry {
+            label: "本編".to_owned(),
+            page_number: 2,
+            children: vec![TocEntry {
+                label: "おまけ".to_owned(),
+                page_number: 4,
+                children: Vec::new(),
+            }],
         }];
 
         assert_eq!(

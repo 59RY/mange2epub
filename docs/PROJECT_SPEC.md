@@ -587,10 +587,12 @@ EPUB 3.3 では `nav.xhtml` を正式な目次として生成する。
 <nav epub:type="toc">
     <ol>
         <li>
-            <a href="pages/page-0002.xhtml">第1話</a>
-        </li>
-        <li>
-            <a href="pages/page-0027.xhtml">第2話</a>
+            <a href="pages/page-0003.xhtml">本編</a>
+            <ol>
+                <li>
+                    <a href="pages/page-0009.xhtml">おまけ</a>
+                </li>
+            </ol>
         </li>
     </ol>
 </nav>
@@ -598,27 +600,42 @@ EPUB 3.3 では `nav.xhtml` を正式な目次として生成する。
 
 manifest では `nav` プロパティを付与する。
 
-目次項目は `book.yaml` の `toc.entries` で指定する。各項目は、表示するラベルと、リンク先となる 1 始まりのページ番号を持つ。ページ番号は、自然順または `images.order` で画像を並べた後のページを指す。
+目次項目は `book.yaml` の `toc.entries` で指定する。各項目は、表示するラベルと、リンク先となる 1 始まりのページ番号を必須で持つ。ページ番号は、自然順または `images.order` で画像を並べた後のページを指す。
+
+任意の `children` に同じ構造の目次項目を指定すると、階層化した目次を生成できる。子項目も `label` と `page` を必須とし、さらに `children` を持つことができる。
 
 ```yaml
 toc:
   entries:
+    - label: "表紙"
+      page: 1
+
+    - label: "導入"
+      page: 2
+
+    - label: "目次ページ"
+      page: 3
+
     - label: "本編"
       page: 4
+      children:
+        - label: "おまけ"
+          page: 10
 
-    - label: "OMAKE!"
-      page: 10
+    - label: "あとがき"
+      page: 12
 ```
 
-指定された項目は、YAML に記述した順序を維持して `nav.xhtml` へ出力する。ラベルの重複と、複数項目から同じページへのリンクは許可する。
+指定された項目は、各階層で YAML に記述した順序を維持して `nav.xhtml` へ出力する。ラベルの重複と、複数項目から同じページへのリンクは許可する。
 
 `toc` を省略した場合、または `toc.entries` が空の場合は、書籍タイトルをラベルとし、第 1 ページへリンクする項目を 1 件生成する。項目を 1 件以上指定した場合は、指定された項目だけを出力し、既定の項目を追加しない。
 
-このバージョンでは階層化した目次、page-list、landmarks、ページ内フラグメントへのリンクを扱わない。画像内に描かれた目次ページは通常の画像ページであり、EPUB Navigation Document の目次とは別に扱う。
+このバージョンでは page-list、landmarks、ページ内フラグメントへのリンクを扱わない。画像内に描かれた目次ページは通常の画像ページであり、EPUB Navigation Document の目次とは別に扱う。
 
 目次項目は次の条件を満たす必要がある。
 
 - `label` は空文字または空白だけの文字列にしない
+- `page` はすべての目次項目で必須とする
 - `page` は 1 以上とする
 - `page` は入力画像のページ数を超えない
 
@@ -759,11 +776,14 @@ toc:
   entries:
     - label: "本編"
       page: 4
-    - label: "OMAKE!"
-      page: 10
+      children:
+        - label: "おまけ"
+          page: 10
+    - label: "あとがき"
+      page: 12
 ```
 
-`version`、`output`、`book.title`、`images.directory` は必須とする。`book` のそれ以外の項目、`images.order`、`pages`、`toc` は任意とし、`creators`、`roles`、`alternate_scripts`、`types`、`subjects`、`images.order`、`pages.overrides`、`toc.entries` はそれぞれ複数指定できる。
+`version`、`output`、`book.title`、`images.directory` は必須とする。`book` のそれ以外の項目、`images.order`、`pages`、`toc` は任意とし、`creators`、`roles`、`alternate_scripts`、`types`、`subjects`、`images.order`、`pages.overrides`、`toc.entries`、目次項目の `children` はそれぞれ複数指定できる。
 
 `output` と `images.directory` の相対パスは、設定ファイル自身の親ディレクトリを基準に解決する。例えば `config/book.yaml` 内の `./images` は `config/images` を指す。
 
